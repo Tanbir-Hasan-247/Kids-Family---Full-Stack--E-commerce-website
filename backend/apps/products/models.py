@@ -20,15 +20,35 @@ class Product(models.Model):
 
     @property
     def average_rating(self):
+        if hasattr(self, "_average_rating"):
+            return self._average_rating
+        # Use prefetched reviews cache if available to prevent N+1 queries
+        if hasattr(self, "_prefetched_objects_cache") and "reviews" in self._prefetched_objects_cache:
+            approved = [r for r in self.reviews.all() if r.is_approved]
+            if approved:
+                return round(sum(r.rating for r in approved) / len(approved), 1)
+            return 5.0
         reviews = self.reviews.filter(is_approved=True)
         if reviews.exists():
             total = sum(r.rating for r in reviews)
             return round(total / reviews.count(), 1)
         return 5.0
 
+    @average_rating.setter
+    def average_rating(self, value):
+        self._average_rating = value
+
     @property
     def reviews_count(self):
+        if hasattr(self, "_reviews_count"):
+            return self._reviews_count
+        if hasattr(self, "_prefetched_objects_cache") and "reviews" in self._prefetched_objects_cache:
+            return len([r for r in self.reviews.all() if r.is_approved])
         return self.reviews.filter(is_approved=True).count()
+
+    @reviews_count.setter
+    def reviews_count(self, value):
+        self._reviews_count = value
 
 
 

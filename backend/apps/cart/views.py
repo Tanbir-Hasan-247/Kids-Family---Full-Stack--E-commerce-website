@@ -41,6 +41,13 @@ def get_or_create_cart(request):
     return cart, session_key if is_new_session else None
 
 
+def load_cart_optimized(cart_id):
+    return Cart.objects.prefetch_related(
+        "items__variant__product",
+        "items__variant__attributes__attribute_type",
+    ).get(pk=cart_id)
+
+
 class CartDetailAPIView(APIView):
     """
     Retrieve current cart details, items, count, and total amount.
@@ -50,6 +57,7 @@ class CartDetailAPIView(APIView):
 
     def get(self, request):
         cart, new_session_key = get_or_create_cart(request)
+        cart = load_cart_optimized(cart.pk)
         serializer = CartSerializer(cart, context={"request": request})
         data = serializer.data
         response = Response(data, status=status.HTTP_200_OK)
@@ -93,7 +101,7 @@ class AddToCartAPIView(APIView):
             item.quantity = variant.stock
             item.save()
 
-        cart_data = CartSerializer(cart, context={"request": request}).data
+        cart_data = CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data
         response = Response(
             {
                 "success": True,
@@ -143,7 +151,7 @@ class UpdateCartItemAPIView(APIView):
                 return Response({
                     "success": True,
                     "removed": True,
-                    "cart": CartSerializer(cart).data,
+                    "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
                 })
             item.save()
         elif action == "set" or direct_quantity is not None:
@@ -156,7 +164,7 @@ class UpdateCartItemAPIView(APIView):
         return Response({
             "success": True,
             "removed": False,
-            "cart": CartSerializer(cart).data,
+            "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
             "item": CartItemSerializer(item).data,
         })
 
@@ -174,7 +182,7 @@ class RemoveCartItemAPIView(APIView):
         return Response({
             "success": True,
             "message": "Item removed from cart.",
-            "cart": CartSerializer(cart).data,
+            "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
         })
 
 
@@ -190,7 +198,7 @@ class ClearCartAPIView(APIView):
         return Response({
             "success": True,
             "message": "Cart cleared.",
-            "cart": CartSerializer(cart).data,
+            "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
         })
 
 
@@ -215,7 +223,7 @@ class MergeGuestCartAPIView(APIView):
 
         user_cart, _ = Cart.objects.get_or_create(user=request.user)
 
-        for item in guest_cart.items.all():
+        for item in guest_cart.items.select_related("variant").all():
             existing = CartItem.objects.filter(cart=user_cart, variant=item.variant).first()
             if existing:
                 existing.quantity += item.quantity
@@ -228,6 +236,6 @@ class MergeGuestCartAPIView(APIView):
         return Response({
             "success": True,
             "message": "Guest cart merged successfully.",
-            "cart": CartSerializer(user_cart).data,
+            "cart": CartSerializer(load_cart_optimized(user_cart.pk), context={"request": request}).data,
         })
 

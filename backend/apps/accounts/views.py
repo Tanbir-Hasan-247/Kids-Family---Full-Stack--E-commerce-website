@@ -112,7 +112,14 @@ class UserDashboardSummaryAPIView(APIView):
             status__in=["pending", "confirmed", "processing"],
         ).count()
         wishlist_count = FavoriteItem.objects.filter(user=user).count()
-        recent_orders_qs = Order.objects.filter(user=user).order_by("-created_at")[:4]
+        recent_orders_qs = (
+            Order.objects.filter(user=user)
+            .prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            )
+            .order_by("-created_at")[:4]
+        )
 
         return Response(
             {

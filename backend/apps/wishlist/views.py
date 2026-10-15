@@ -34,8 +34,11 @@ class WishlistListAPIView(APIView):
         identity = get_identity(request)
         items = (
             FavoriteItem.objects.filter(**identity)
-            .select_related("product__category")
-            .prefetch_related("product__variants")
+            .select_related("product__category", "product__category__parent")
+            .prefetch_related(
+                "product__variants__attributes__attribute_type",
+                "product__reviews",
+            )
             .order_by("-added_at")
         )
         serializer = FavoriteItemSerializer(items, many=True, context={"request": request})

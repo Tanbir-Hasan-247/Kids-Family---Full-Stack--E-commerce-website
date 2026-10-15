@@ -3,28 +3,31 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import api, { formatImageUrl } from '../../api/axios';
 
-// Fallback high-res graphical banners (GhorerBazar style: 1000x400 / 2.5:1 desktop, 16:9 mobile)
+// Fallback high-res graphical banners
 const DEFAULT_SLIDES = [
   {
     id: 'def-1',
-    title: 'Eid & Festive Family Matching Collection',
-    image: 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?q=80&w=1500&h=600&auto=format&fit=crop',
-    mobile_image: 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?q=80&w=600&h=338&auto=format&fit=crop',
-    link_url: '/products',
+    title: 'Festive Family Matching Combo',
+    image: '/media/sliders/slider_banner_1_family.jpg',
+    link_url: '/products?cat=matching-sets-boy',
   },
   {
     id: 'def-2',
-    title: 'Joyful Kids & Baby Summer Wear',
-    image: 'https://images.unsplash.com/photo-1471286174890-9c112ffca56a?q=80&w=1500&h=600&auto=format&fit=crop',
-    mobile_image: 'https://images.unsplash.com/photo-1471286174890-9c112ffca56a?q=80&w=600&h=338&auto=format&fit=crop',
-    link_url: '/products',
+    title: 'Royal Panjabi & Koti (Father & Son)',
+    image: '/media/sliders/slider_banner_2_panjabi.jpg',
+    link_url: '/products?cat=panjabi-koti-boy',
   },
   {
     id: 'def-3',
-    title: 'Premium Organic Cotton Newborn Outfits',
-    image: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?q=80&w=1500&h=600&auto=format&fit=crop',
-    mobile_image: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?q=80&w=600&h=338&auto=format&fit=crop',
-    link_url: '/products',
+    title: 'Joyful Kids Wear (Boys & Girls)',
+    image: '/media/sliders/slider_banner_3_kids.jpg',
+    link_url: '/products?cat=boy',
+  },
+  {
+    id: 'def-4',
+    title: "Girls' Elegant Party & Frock Sets",
+    image: '/media/sliders/slider_banner_4_frocks.jpg',
+    link_url: '/products?cat=frock-dress-girl',
   },
 ];
 

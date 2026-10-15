@@ -61,7 +61,7 @@ class ProductListCreateAPIView(generics.ListCreateAPIView):
         queryset = (
             Product.objects.all()
             .select_related("category", "category__parent")
-            .prefetch_related("variants__attributes")
+            .prefetch_related("variants__attributes__attribute_type", "reviews")
             .annotate(starting_price=Min("variants__price"))
         )
 
@@ -140,7 +140,11 @@ class ProductDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     Retrieve, update, or delete a product.
     """
     serializer_class = ProductDetailSerializer
-    queryset = Product.objects.all().select_related("category", "category__parent").prefetch_related("variants")
+    queryset = (
+        Product.objects.all()
+        .select_related("category", "category__parent")
+        .prefetch_related("variants__attributes__attribute_type", "reviews")
+    )
 
     def get_permissions(self):
         if self.request.method in ["PUT", "PATCH", "DELETE"]:
@@ -204,7 +208,7 @@ class SaleProductsAPIView(generics.ListAPIView):
             .select_related("category", "category__parent")
             .distinct()
             .annotate(starting_price=Min("variants__price"))
-            .prefetch_related("variants")
+            .prefetch_related("variants__attributes__attribute_type", "reviews")
             .order_by("-id")
         )
 
@@ -213,7 +217,7 @@ class AttributeTypeListCreateAPIView(generics.ListCreateAPIView):
     """
     List all attribute types (e.g. Color, Size) or create new (Admin).
     """
-    queryset = AttributeType.objects.all().order_by("id")
+    queryset = AttributeType.objects.prefetch_related("attributevalue_set__attribute_type").order_by("id")
     serializer_class = AttributeTypeSerializer
 
     def get_permissions(self):
@@ -263,16 +267,17 @@ class ProductVariantListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         product_id = self.kwargs.get("product_id")
+        qs = ProductVariant.objects.select_related("product").prefetch_related("attributes__attribute_type")
         if product_id:
-            return ProductVariant.objects.filter(product_id=product_id)
-        return ProductVariant.objects.all()
+            return qs.filter(product_id=product_id)
+        return qs
 
 
 class ProductVariantDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a product variant.
     """
-    queryset = ProductVariant.objects.all()
+    queryset = ProductVariant.objects.select_related("product").prefetch_related("attributes__attribute_type")
     serializer_class = ProductVariantSerializer
 
     def get_permissions(self):
@@ -292,7 +297,11 @@ class ProductReviewListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         product_id = self.kwargs.get("product_id")
-        return ProductReview.objects.filter(product_id=product_id, is_approved=True).order_by("-created_at")
+        return (
+            ProductReview.objects.filter(product_id=product_id, is_approved=True)
+            .select_related("user")
+            .order_by("-created_at")
+        )
 
     def perform_create(self, serializer):
         product = get_object_or_404(Product, pk=self.kwargs.get("product_id"))
@@ -323,6 +332,7 @@ class FeaturedPhotoReviewsAPIView(generics.ListAPIView):
         return (
             ProductReview.objects.filter(is_approved=True)
             .exclude(image="")
+            .select_related("user", "product")
             .order_by("-created_at")[:12]
         )
 

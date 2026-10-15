@@ -319,7 +319,7 @@ const CustomerReviewsSection = ({ productId, initialReviews = [], averageRating 
                 type="text"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
-                placeholder="যেমন: তানভীর হাসান বা বাচ্চার আম্মু"
+                placeholder="যেমন: তানভীর হাসান"
                 className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 text-xs sm:text-sm font-semibold bg-neutral-50/50 focus:bg-white focus:outline-none focus:border-[#1b3b2b]"
               />
             </div>

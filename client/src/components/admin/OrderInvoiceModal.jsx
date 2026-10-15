@@ -89,7 +89,7 @@ const OrderInvoiceModal = ({ order, isOpen, onClose }) => {
                 Customer Details / গ্রাহকের তথ্য
               </span>
               <h4 className="text-sm font-bold text-neutral-900">
-                {order.first_name} {order.last_name}
+                {order.full_name || `${order.first_name || ''} ${order.last_name || ''}`.trim()}
               </h4>
               <p className="text-xs text-neutral-700 flex items-center gap-1.5 mt-1 font-semibold">
                 <Phone className="w-3.5 h-3.5 text-neutral-400" />
@@ -109,7 +109,7 @@ const OrderInvoiceModal = ({ order, isOpen, onClose }) => {
               <p className="text-xs text-neutral-800 leading-relaxed flex items-start gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-neutral-400 shrink-0 mt-0.5" />
                 <span>
-                  {order.address}, {order.city}
+                  {order.address_line || order.address}, {order.city}
                 </span>
               </p>
               <div className="mt-2 flex items-center gap-2">
@@ -124,6 +124,14 @@ const OrderInvoiceModal = ({ order, isOpen, onClose }) => {
               </div>
             </div>
           </div>
+
+          {/* Cancelled Memo Notice */}
+          {order.status === 'cancelled' && (
+            <div className="bg-rose-50 border border-rose-300 p-3 rounded-xl text-xs text-rose-900 flex items-start gap-2">
+              <strong className="font-bold text-rose-800 shrink-0">অর্ডার বাতিল (CANCELLED):</strong>
+              <span>{order.cancel_reason || 'এই অর্ডারটি বাতিল করা হয়েছে।'}</span>
+            </div>
+          )}
 
           {/* Items Table */}
           <div className="overflow-x-auto">

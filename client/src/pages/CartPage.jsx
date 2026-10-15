@@ -2,13 +2,18 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Plus, Minus, Trash2, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useShopSettings } from '../context/ShopSettingsContext';
+import { formatImageUrl } from '../api/axios';
+import VariantBadges from '../components/common/VariantBadges';
 
 const CartPage = () => {
   const navigate = useNavigate();
   const { items, totalPrice, updateQuantity, removeItem } = useCart();
+  const { settings } = useShopSettings();
 
   const subtotal = parseFloat(totalPrice) || 0;
-  const shippingFee = subtotal > 0 ? 60 : 0;
+  const feeInside = Number(settings?.delivery_inside_dhaka ?? 60);
+  const shippingFee = subtotal > 0 ? feeInside : 0;
   const grandTotal = subtotal + shippingFee;
 
   if (items.length === 0) {
@@ -45,7 +50,7 @@ const CartPage = () => {
               <div className="w-20 h-24 bg-neutral-100 rounded-xl overflow-hidden shrink-0 border border-neutral-200">
                 <img
                   src={
-                    item.variant?.image ||
+                    formatImageUrl(item.variant?.image) ||
                     'https://placehold.co/200x260/1a1a1a/d4af37?text=KF'
                   }
                   alt={item.product_name}
@@ -57,8 +62,8 @@ const CartPage = () => {
                 <h4 className="text-sm font-bold text-neutral-900 truncate">
                   {item.product_name}
                 </h4>
-                <p className="text-xs text-neutral-400 mt-0.5">SKU: {item.variant?.sku}</p>
-                <span className="text-sm font-extrabold text-[#1b3b2b] block mt-1">
+                <VariantBadges variant={item.variant} className="mt-1.5" />
+                <span className="text-sm font-extrabold text-[#1b3b2b] block mt-1.5">
                   ৳{item.variant?.price}
                 </span>
 

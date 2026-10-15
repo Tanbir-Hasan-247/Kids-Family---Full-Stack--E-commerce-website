@@ -114,7 +114,8 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
 
     def get_thumbnail(self, obj):
-        first_variant = obj.variants.first()
+        variants = list(obj.variants.all())
+        first_variant = variants[0] if variants else None
         if first_variant and first_variant.image:
             request = self.context.get("request")
             if request:
@@ -169,28 +170,52 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_reviews(self, obj):
-        approved_reviews = obj.reviews.filter(is_approved=True)[:25]
+        # Use prefetched reviews in memory to avoid duplicate SQL queries
+        if hasattr(obj, "_prefetched_objects_cache") and "reviews" in obj._prefetched_objects_cache:
+            approved_reviews = [r for r in obj.reviews.all() if r.is_approved][:25]
+        else:
+            approved_reviews = obj.reviews.filter(is_approved=True)[:25]
         return ProductReviewSerializer(approved_reviews, many=True, context=self.context).data
-
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         if instance.category:
-            rep["category"] = CategorySerializer(instance.category).data
+            rep["category"] = {
+                "id": instance.category.id,
+                "name": instance.category.name,
+                "slug": instance.category.slug,
+                "parent": instance.category.parent_id,
+                "parent_name": instance.category.parent.name if instance.category.parent else None,
+                "parent_slug": instance.category.parent.slug if instance.category.parent else None,
+            }
         return rep
 
     def get_colors(self, obj):
+        colors = {}
+        for v in obj.variants.all():
+            for attr in v.attributes.all():
+                if attr.attribute_type.name.lower() == "color" and attr.id not in colors:
+                    colors[attr.id] = attr
+        if colors:
+            return AttributeValueSerializer(colors.values(), many=True).data
         color_values = AttributeValue.objects.filter(
             attribute_type__name__iexact="Color",
             productvariant__product=obj,
-        ).distinct()
+        ).select_related("attribute_type").distinct()
         return AttributeValueSerializer(color_values, many=True).data
 
     def get_sizes(self, obj):
+        sizes = {}
+        for v in obj.variants.all():
+            for attr in v.attributes.all():
+                if attr.attribute_type.name.lower() == "size" and attr.id not in sizes:
+                    sizes[attr.id] = attr
+        if sizes:
+            return AttributeValueSerializer(sizes.values(), many=True).data
         size_values = AttributeValue.objects.filter(
             attribute_type__name__iexact="Size",
             productvariant__product=obj,
-        ).distinct()
+        ).select_related("attribute_type").distinct()
         return AttributeValueSerializer(size_values, many=True).data
 
     def get_is_favorited(self, obj):

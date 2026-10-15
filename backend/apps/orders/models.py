@@ -49,6 +49,11 @@ class Order(models.Model):
         max_length=10, choices=PAYMENT_STATUS_CHOICES, default="unpaid"
     )
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default="pending")
+    cancel_reason = models.TextField(
+        blank=True,
+        default="",
+        help_text="Reason or note for cancellation if order is cancelled",
+    )
 
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     shipping_fee = models.DecimalField(max_digits=8, decimal_places=2, default=60)

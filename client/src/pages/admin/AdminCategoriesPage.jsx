@@ -119,7 +119,7 @@ const AdminCategoriesPage = () => {
       loadCategories();
     } catch (err) {
       console.error('Failed to delete category:', err);
-      alert('Could not delete category. Make sure no products are assigned to this category.');
+      alert(err.response?.data?.detail || 'Could not delete category. Make sure no products are assigned to this category.');
     }
   };
 

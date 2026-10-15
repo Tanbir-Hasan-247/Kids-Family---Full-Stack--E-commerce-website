@@ -12,10 +12,10 @@ const WhatsAppWidget = ({ phoneNumber = '+8801700000000' }) => {
   const waUrl = `https://wa.me/${cleanPhone}?text=${message}`;
 
   return (
-    <aside aria-label="WhatsApp Support" className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end pointer-events-auto">
+    <aside aria-label="WhatsApp Support" className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end pointer-events-none">
       {/* Tooltip speech bubble */}
       {showTooltip && (
-        <div className="relative mb-2.5 bg-white text-neutral-800 text-xs py-2 px-3.5 rounded-2xl shadow-xl border border-neutral-200/80 max-w-[220px] flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="relative mb-2.5 bg-white text-neutral-800 text-xs py-2 px-3.5 rounded-2xl shadow-xl border border-neutral-200/80 max-w-[220px] flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300 pointer-events-auto">
           <div className="flex-1">
             <p className="font-bold text-[#1b3b2b] text-[11px] leading-tight">সাহায্য প্রয়োজন?</p>
             <p className="text-[11px] text-neutral-600 mt-0.5 leading-snug">
@@ -39,7 +39,7 @@ const WhatsAppWidget = ({ phoneNumber = '+8801700000000' }) => {
         href={waUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="group relative flex items-center justify-center w-13 h-13 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300"
+        className="group relative flex items-center justify-center w-13 h-13 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 pointer-events-auto"
         title="Chat on WhatsApp"
       >
         {/* Subtle ping pulse animation */}

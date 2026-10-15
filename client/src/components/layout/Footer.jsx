@@ -160,8 +160,13 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
+                <Link to="/track-order" className="hover:text-amber-400 transition text-amber-200/90 font-medium">
+                  Track Your Order (অর্ডার ট্র্যাকিং)
+                </Link>
+              </li>
+              <li>
                 <Link to="/orders" className="hover:text-amber-400 transition">
-                  Track Your Order
+                  Order History (অর্ডারের তালিকা)
                 </Link>
               </li>
               <li>
@@ -194,9 +199,19 @@ const Footer = () => {
         </div>
 
         {/* Bottom */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <p>© {new Date().getFullYear()} KIDS & FAMILY Lifestyle Ltd. All rights reserved.</p>
-          <p className="flex items-center gap-1">
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
+          <p className="text-center sm:text-left">
+            © {new Date().getFullYear()} KIDS & FAMILY Lifestyle Ltd. All rights reserved. • Developed by{' '}
+            <a
+              href="https://www.facebook.com/profile.php?id=100067381342853"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-400 hover:text-amber-300 font-bold hover:underline transition"
+            >
+              Tanbir Hasan
+            </a>
+          </p>
+          <p className="flex items-center gap-1 text-neutral-400">
             Made with <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" /> for joyful families
           </p>
         </div>

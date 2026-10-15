@@ -53,6 +53,7 @@ const AdminOrdersPage = () => {
   const [updateSuccess, setUpdateSuccess] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [editPaymentStatus, setEditPaymentStatus] = useState('');
+  const [editCancelReason, setEditCancelReason] = useState('');
 
   const handleExportCSV = () => {
     let url = '/api/dashboard/export-orders-csv/?';
@@ -99,6 +100,7 @@ const AdminOrdersPage = () => {
     setSelectedOrder(order);
     setEditStatus(order.status);
     setEditPaymentStatus(order.payment_status);
+    setEditCancelReason(order.cancel_reason || '');
     setUpdateSuccess('');
   };
 
@@ -111,6 +113,7 @@ const AdminOrdersPage = () => {
       const res = await api.patch(`/orders/admin/${selectedOrder.order_number}/`, {
         status: editStatus,
         payment_status: editPaymentStatus,
+        cancel_reason: editStatus === 'cancelled' ? editCancelReason : (selectedOrder.cancel_reason || ''),
       });
 
       setSelectedOrder(res.data);
@@ -257,6 +260,14 @@ const AdminOrdersPage = () => {
                         >
                           {o.status}
                         </span>
+                        {o.status === 'cancelled' && o.cancel_reason && (
+                          <span
+                            className="block text-[10px] text-rose-700 font-medium truncate max-w-[130px] mt-1"
+                            title={o.cancel_reason}
+                          >
+                            কারণ: {o.cancel_reason}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-xs text-neutral-500 whitespace-nowrap">
                         {new Date(o.created_at).toLocaleDateString('en-GB', {
@@ -341,6 +352,12 @@ const AdminOrdersPage = () => {
                     {o.status}
                   </span>
                 </div>
+
+                {o.status === 'cancelled' && o.cancel_reason && (
+                  <div className="text-[11px] text-rose-800 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200">
+                    <strong className="font-bold">বাতিলের কারণ:</strong> {o.cancel_reason}
+                  </div>
+                )}
 
                 {/* Customer & Payment Info */}
                 <div className="flex items-center justify-between text-xs">
@@ -437,6 +454,24 @@ const AdminOrdersPage = () => {
                 <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{updateSuccess}</span>
+                </div>
+              )}
+
+              {/* Cancelled Banner if Order is Cancelled */}
+              {selectedOrder.status === 'cancelled' && (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-1.5 animate-in fade-in">
+                  <div className="flex items-center gap-2 font-black text-rose-800">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>এই অর্ডারটি বাতিল করা হয়েছে (Cancelled Order)</span>
+                  </div>
+                  {selectedOrder.cancel_reason ? (
+                    <div className="pl-6 text-rose-950 font-medium">
+                      <span className="font-bold text-rose-700">বাতিলের কারণ / নোট: </span>
+                      <span>{selectedOrder.cancel_reason}</span>
+                    </div>
+                  ) : (
+                    <p className="pl-6 text-rose-500 italic">কোনো কারণ উল্লেখ করা হয়নি।</p>
+                  )}
                 </div>
               )}
 
@@ -547,6 +582,50 @@ const AdminOrdersPage = () => {
                     </select>
                   </div>
                 </div>
+
+                {/* Cancellation Note input when status is 'cancelled' */}
+                {editStatus === 'cancelled' && (
+                  <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-rose-900">
+                        অর্ডার বাতিলের কারণ / নোট (Cancellation Note)
+                      </label>
+                      <span className="text-[10px] text-rose-600 font-medium">কাস্টমারকে ট্র্যাকিংয়ে দেখানো হবে</span>
+                    </div>
+
+                    {/* Quick suggestion chips */}
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {[
+                        'গ্রাহকের অনুরোধে বাতিল',
+                        'পণ্য স্টকে নেই (Stock Out)',
+                        'ভুল নম্বর / ফোন রিসিভ করেনি',
+                        'ঠিকানা অস্পষ্ট / সার্ভিসের বাইরে',
+                        'ডুপ্লিকেট অর্ডার',
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setEditCancelReason(chip)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium transition cursor-pointer ${
+                            editCancelReason === chip
+                              ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                              : 'bg-white text-neutral-700 border-rose-200 hover:bg-rose-100/60'
+                          }`}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+
+                    <textarea
+                      rows={2}
+                      value={editCancelReason}
+                      onChange={(e) => setEditCancelReason(e.target.value)}
+                      placeholder="বাতিলের কারণ লিখুন (যেমনঃ গ্রাহকের অনুরোধে অথবা স্টক শেষ)..."
+                      className="w-full px-3 py-2 text-xs bg-white border border-rose-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-rose-500 text-neutral-800 placeholder:text-neutral-400"
+                    />
+                  </div>
+                )}
 
                 <div className="flex justify-end pt-2">
                   <button

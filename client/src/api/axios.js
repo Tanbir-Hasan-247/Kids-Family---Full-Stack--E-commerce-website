@@ -13,12 +13,31 @@ export const getSessionKey = () => {
 export const formatImageUrl = (url) => {
   if (!url) return '';
   if (typeof url !== 'string') return '';
+
+  // Extract from /media/ to keep path relative through Vite proxy
+  // This guarantees images load across localhost, LAN IPs, and Cloudflare tunnels
+  const mediaIdx = url.indexOf('/media/');
+  if (mediaIdx !== -1) {
+    return url.slice(mediaIdx);
+  }
+
   if (url.includes('127.0.0.1:8000') || url.includes('localhost:8000')) {
     return url.replace(/^https?:\/\/(127\.0\.0\.1|localhost):8000/, '');
   }
+
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
+
+  if (
+    url.startsWith('variants/') ||
+    url.startsWith('sliders/') ||
+    url.startsWith('banners/') ||
+    url.startsWith('reviews/')
+  ) {
+    return `/media/${url}`;
+  }
+
   return url.startsWith('/') ? url : `/${url}`;
 };
 

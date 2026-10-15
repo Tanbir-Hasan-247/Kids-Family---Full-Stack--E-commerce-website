@@ -1,7 +1,9 @@
+import re
 from rest_framework import permissions, status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
 from .serializers import (
@@ -93,6 +95,15 @@ class CheckoutAPIView(APIView):
             # Clear cart
             cart_items.delete()
 
+        # Prefetch relations for instant response serialization
+        order = (
+            Order.objects.prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            )
+            .get(pk=order.pk)
+        )
+
         return Response(
             {
                 "success": True,
@@ -112,7 +123,14 @@ class OrderListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         if self.request.user.is_authenticated:
-            return Order.objects.filter(user=self.request.user).prefetch_related("items").order_by("-created_at")
+            return (
+                Order.objects.filter(user=self.request.user)
+                .prefetch_related(
+                    "items__variant__product",
+                    "items__variant__attributes__attribute_type",
+                )
+                .order_by("-created_at")
+            )
 
         session_key = (
             self.request.headers.get("X-Session-Key")
@@ -120,30 +138,100 @@ class OrderListAPIView(generics.ListAPIView):
             or self.request.session.session_key
         )
         if session_key:
-            return Order.objects.filter(session_key=session_key).prefetch_related("items").order_by("-created_at")
+            return (
+                Order.objects.filter(session_key=session_key)
+                .prefetch_related(
+                    "items__variant__product",
+                    "items__variant__attributes__attribute_type",
+                )
+                .order_by("-created_at")
+            )
 
         return Order.objects.none()
 
 
 class OrderDetailAPIView(APIView):
     """
-    Retrieve single order by order_number.
+    Retrieve single order by order_number for order tracking & confirmation.
     """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, order_number):
-        order = get_object_or_404(Order.objects.prefetch_related("items"), order_number=order_number)
+        order = get_object_or_404(
+            Order.objects.prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            ),
+            order_number=order_number,
+        )
+        return Response(OrderSerializer(order, context={"request": request}).data)
 
-        # Ensure customer can only view their own order unless staff
-        if not request.user.is_staff:
-            if order.user and order.user != request.user:
-                return Response({"message": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
-            if not order.user:
-                session_key = request.headers.get("X-Session-Key") or request.query_params.get("session_key")
-                if order.session_key and session_key != order.session_key:
-                    return Response({"message": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
-        return Response(OrderSerializer(order).data)
+class TrackOrderAPIView(APIView):
+    """
+    Search and track orders by order_number OR customer phone number.
+    Supports GET /api/orders/track/?query=... and POST /api/orders/track/ with { "query": "..." }
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        query = request.query_params.get("query", "").strip()
+        return self._track(query, request)
+
+    def post(self, request):
+        query = request.data.get("query", "").strip()
+        return self._track(query, request)
+
+    def _track(self, query, request):
+        if not query:
+            return Response(
+                {"success": False, "message": "অনুগ্রহ করে আপনার অর্ডার আইডি অথবা ফোন নম্বর দিন।", "orders": []},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        orders_qs = Order.objects.prefetch_related(
+            "items__variant__product",
+            "items__variant__attributes__attribute_type",
+        )
+
+        # 1. Exact or case-insensitive match on order_number
+        orders = list(orders_qs.filter(order_number__iexact=query))
+
+        # 2. If not found by exact order_number, try phone or partial matches
+        if not orders:
+            clean_digits = re.sub(r"[^\d]", "", query)
+            filters = Q(phone__icontains=query) | Q(order_number__icontains=query)
+
+            if clean_digits:
+                filters |= Q(phone__icontains=clean_digits)
+                if clean_digits.startswith("880") and len(clean_digits) > 3:
+                    filters |= Q(phone__icontains=clean_digits[2:])
+                elif clean_digits.startswith("88") and len(clean_digits) > 2:
+                    filters |= Q(phone__icontains=clean_digits[2:])
+                elif clean_digits.startswith("0") and len(clean_digits) > 1:
+                    filters |= Q(phone__icontains=clean_digits[1:])
+
+            orders = list(orders_qs.filter(filters).order_by("-created_at"))
+
+        if not orders:
+            return Response(
+                {
+                    "success": False,
+                    "message": f"'{query}' এর বিপরীতে কোনো অর্ডার পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার আইডি বা মোবাইল নম্বর দিন।",
+                    "orders": [],
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "query": query,
+                "count": len(orders),
+                "orders": OrderSerializer(orders, many=True, context={"request": request}).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class OrderPaymentStubAPIView(APIView):
@@ -174,7 +262,15 @@ class AdminOrderListAPIView(generics.ListAPIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
-        queryset = Order.objects.all().prefetch_related("items").order_by("-created_at")
+        queryset = (
+            Order.objects.all()
+            .select_related("user")
+            .prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            )
+            .order_by("-created_at")
+        )
         status_filter = self.request.query_params.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -206,5 +302,28 @@ class AdminOrderDetailUpdateAPIView(generics.RetrieveUpdateAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        return Response(OrderSerializer(instance).data)
+        return Response(OrderSerializer(instance, context={"request": request}).data)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        old_status = instance.status
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            self.perform_update(serializer)
+            new_status = serializer.instance.status
+            if old_status != "cancelled" and new_status == "cancelled":
+                for item in instance.items.select_related("variant").all():
+                    if item.variant:
+                        item.variant.stock += item.quantity
+                        item.variant.save()
+            elif old_status == "cancelled" and new_status != "cancelled":
+                for item in instance.items.select_related("variant").all():
+                    if item.variant:
+                        item.variant.stock = max(0, item.variant.stock - item.quantity)
+                        item.variant.save()
+
+        return Response(OrderSerializer(instance, context={"request": request}).data)
 

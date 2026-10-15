@@ -4,18 +4,46 @@ from .models import Order, OrderItem
 
 class OrderItemSerializer(serializers.ModelSerializer):
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    image = serializers.SerializerMethodField()
+    attributes = serializers.SerializerMethodField()
+    product_id = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             "id",
             "variant",
+            "product_id",
             "product_name",
             "variant_sku",
             "price",
             "quantity",
             "subtotal",
+            "image",
+            "attributes",
         ]
+
+    def get_image(self, obj):
+        if obj.variant and obj.variant.image:
+            return obj.variant.image.url
+        return None
+
+    def get_attributes(self, obj):
+        if obj.variant:
+            return [
+                {
+                    "id": attr.id,
+                    "type_name": attr.attribute_type.name,
+                    "value": attr.value,
+                }
+                for attr in obj.variant.attributes.all()
+            ]
+        return []
+
+    def get_product_id(self, obj):
+        if obj.variant and obj.variant.product:
+            return obj.variant.product.id
+        return None
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -43,6 +71,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_status_display",
             "status",
             "status_display",
+            "cancel_reason",
             "subtotal",
             "shipping_fee",
             "total",
@@ -66,5 +95,5 @@ class CheckoutSerializer(serializers.Serializer):
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
-        fields = ["status", "payment_status"]
+        fields = ["status", "payment_status", "cancel_reason"]
 

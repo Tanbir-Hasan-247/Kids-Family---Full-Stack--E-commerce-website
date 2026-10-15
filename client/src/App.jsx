@@ -16,6 +16,7 @@ import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
+import OrderTrackPage from './pages/OrderTrackPage';
 import WishlistPage from './pages/WishlistPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -77,6 +78,8 @@ function App() {
                 <Route path="/checkout" element={<StorefrontLayout><CheckoutPage /></StorefrontLayout>} />
                 <Route path="/order-success/:orderNumber" element={<StorefrontLayout><OrderSuccessPage /></StorefrontLayout>} />
                 <Route path="/orders" element={<StorefrontLayout><OrderHistoryPage /></StorefrontLayout>} />
+                <Route path="/track-order" element={<StorefrontLayout><OrderTrackPage /></StorefrontLayout>} />
+                <Route path="/track-order/:orderNumber" element={<StorefrontLayout><OrderTrackPage /></StorefrontLayout>} />
                 <Route path="/wishlist" element={<StorefrontLayout><WishlistPage /></StorefrontLayout>} />
                 <Route path="/login" element={<StorefrontLayout><LoginPage /></StorefrontLayout>} />
                 <Route path="/register" element={<StorefrontLayout><RegisterPage /></StorefrontLayout>} />

@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { useAuth } from './AuthContext';
 
 const CartContext = createContext();
 
 export const CartProvider = ({ children }) => {
+  const { user } = useAuth();
   const [cart, setCart] = useState(null);
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
@@ -25,7 +27,7 @@ export const CartProvider = ({ children }) => {
 
   useEffect(() => {
     fetchCart();
-  }, [fetchCart]);
+  }, [fetchCart, user]);
 
   const addToCart = async (variantId, quantity = 1) => {
     setLoading(true);

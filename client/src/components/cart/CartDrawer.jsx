@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
+import { useShopSettings } from '../../context/ShopSettingsContext';
+import { formatImageUrl } from '../../api/axios';
+import VariantBadges from '../common/VariantBadges';
 
 const CartDrawer = () => {
   const navigate = useNavigate();
+  const { settings } = useShopSettings();
   const {
     isDrawerOpen,
     closeDrawer,
@@ -67,7 +71,8 @@ const CartDrawer = () => {
   };
 
   const parsedTotal = parseFloat(totalPrice) || 0;
-  const shippingFee = parsedTotal > 0 ? 60 : 0;
+  const feeInside = Number(settings?.delivery_inside_dhaka ?? 60);
+  const shippingFee = parsedTotal > 0 ? feeInside : 0;
   const grandTotal = parsedTotal + shippingFee;
 
   return (
@@ -149,7 +154,7 @@ const CartDrawer = () => {
                   <div className="w-16 h-20 sm:w-18 sm:h-22 bg-neutral-100 rounded-lg overflow-hidden shrink-0 border border-neutral-200">
                     <img
                       src={
-                        item.variant?.image ||
+                        formatImageUrl(item.variant?.image) ||
                         'https://placehold.co/200x260/1a1a1a/d4af37?text=KF'
                       }
                       alt={item.product_name}
@@ -162,18 +167,22 @@ const CartDrawer = () => {
                     <h4 className="text-xs font-bold text-neutral-900 truncate">
                       {item.product_name}
                     </h4>
-                    {item.variant?.sku && (
-                      <p className="text-[10px] text-neutral-400 mt-0.5 truncate">
-                        SKU: {item.variant.sku}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
+
+                    {/* Variant Attributes (Color & Size Badges) */}
+                    <VariantBadges variant={item.variant} className="mt-1" />
+
+                    <div className="flex items-center gap-2 mt-1.5">
                       <span className="text-xs font-black text-[#1b3b2b]">
                         ৳{item.variant?.price}
                       </span>
                       {item.variant?.compare_at_price && (
                         <span className="text-[10px] text-neutral-400 line-through">
                           ৳{item.variant.compare_at_price}
+                        </span>
+                      )}
+                      {item.variant?.sku && (
+                        <span className="text-[9px] text-neutral-400 ml-auto font-mono">
+                          {item.variant.sku}
                         </span>
                       )}
                     </div>

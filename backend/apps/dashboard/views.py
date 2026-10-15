@@ -4,7 +4,7 @@ from django.http import HttpResponse
 from rest_framework import permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, F
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from apps.orders.models import Order, OrderItem
@@ -80,11 +80,11 @@ class DashboardAnalyticsAPIView(APIView):
             for item in monthly_sales_qs
         ]
 
-        # Category sales breakdown
+        # Category sales breakdown (revenue = unit_price * quantity)
         cat_sales_qs = (
             OrderItem.objects.filter(order__in=valid_orders)
             .values("variant__product__category__name")
-            .annotate(total_revenue=Sum("price"), total_qty=Sum("quantity"))
+            .annotate(total_revenue=Sum(F("price") * F("quantity")), total_qty=Sum("quantity"))
             .order_by("-total_revenue")[:6]
         )
         category_sales = [
@@ -96,15 +96,22 @@ class DashboardAnalyticsAPIView(APIView):
             for item in cat_sales_qs
         ]
 
-        # Top 5 best selling products
+        # Top 5 best selling products (revenue = unit_price * quantity)
         top_products = (
             OrderItem.objects.filter(order__in=valid_orders)
             .values("product_name")
-            .annotate(total_qty=Sum("quantity"), total_revenue=Sum("price"))
+            .annotate(total_qty=Sum("quantity"), total_revenue=Sum(F("price") * F("quantity")))
             .order_by("-total_qty")[:5]
         )
 
-        recent_orders = Order.objects.prefetch_related("items").order_by("-created_at")[:8]
+        recent_orders = (
+            Order.objects.select_related("user")
+            .prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            )
+            .order_by("-created_at")[:8]
+        )
 
         return Response({
             "metrics": {
@@ -173,7 +180,14 @@ class ExportOrdersCSVAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        orders = Order.objects.prefetch_related("items").order_by("-created_at")
+        orders = (
+            Order.objects.select_related("user")
+            .prefetch_related(
+                "items__variant__product",
+                "items__variant__attributes__attribute_type",
+            )
+            .order_by("-created_at")
+        )
 
         status_filter = request.query_params.get("status")
         if status_filter and status_filter != "all":
@@ -194,6 +208,7 @@ class ExportOrdersCSVAPIView(APIView):
             "Email",
             "Delivery Address",
             "City / Region",
+            "Customer Notes",
             "Items Summary",
             "Subtotal",
             "Delivery Charge",
@@ -201,6 +216,7 @@ class ExportOrdersCSVAPIView(APIView):
             "Payment Method",
             "Payment Status",
             "Order Status",
+            "Cancellation Reason",
             "Order Date",
         ])
 
@@ -209,22 +225,24 @@ class ExportOrdersCSVAPIView(APIView):
                 f"{item.product_name} x{item.quantity} (৳{item.price})"
                 for item in o.items.all()
             ])
-            subtotal = o.total - o.shipping_fee
+            subtotal = o.subtotal if getattr(o, "subtotal", None) is not None else (o.total - o.shipping_fee)
             writer.writerow([
                 o.order_number,
-                f"{o.first_name} {o.last_name}".strip(),
-                o.phone,
+                (o.full_name or "").strip(),
+                o.phone or "",
                 o.email or (o.user.email if o.user else "N/A"),
-                o.address,
-                o.city,
+                o.address_line or "",
+                o.city or "",
+                o.notes or "",
                 items_summary,
                 subtotal,
                 o.shipping_fee,
                 o.total,
-                o.payment_method.upper(),
-                o.payment_status.capitalize(),
-                o.status.capitalize(),
-                o.created_at.strftime("%Y-%m-%d %H:%M"),
+                (o.payment_method or "").upper(),
+                (o.payment_status or "").capitalize(),
+                (o.status or "").capitalize(),
+                o.cancel_reason or "",
+                o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else "",
             ])
 
         return response

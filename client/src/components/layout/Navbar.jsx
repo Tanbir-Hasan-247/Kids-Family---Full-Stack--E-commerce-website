@@ -13,6 +13,7 @@ import {
   Package,
   LayoutDashboard,
   ShieldCheck,
+  Truck,
 } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
@@ -103,9 +104,22 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200">
       {/* Top Banner */}
-      <div className="bg-[#1b3b2b] text-emerald-100 text-xs py-1.5 px-4 text-center font-medium tracking-wide">
-        Family Matching Collection is Here! • Cash on Delivery Available Across
-        Bangladesh
+      <div className="bg-[#1b3b2b] text-emerald-100 text-xs py-1.5 px-3 sm:px-6 font-medium tracking-wide">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <span className="hidden md:inline text-[11px] text-emerald-200">
+            🚚 সারাদেশে ক্যাশ অন ডেলিভারি সুবিধা
+          </span>
+          <span className="mx-auto md:mx-0 text-center">
+            Family Matching Collection is Here! • Premium Quality Outfits
+          </span>
+          <Link
+            to="/track-order"
+            className="hidden sm:inline-flex items-center gap-1 text-amber-300 hover:text-amber-200 font-bold transition text-[11px]"
+          >
+            <Truck className="w-3 h-3 text-amber-300" />
+            <span>অর্ডার ট্র্যাকিং</span>
+          </Link>
+        </div>
       </div>
 
       {/* Main Nav */}
@@ -246,6 +260,14 @@ const Navbar = () => {
                     My Orders
                   </Link>
 
+                  <Link
+                    to="/track-order"
+                    className="flex items-center gap-2.5 px-4 py-2 text-sm text-[#1b3b2b] hover:bg-neutral-50 font-medium"
+                  >
+                    <Truck className="w-4 h-4 text-emerald-700" />
+                    Track Order (ট্র্যাকিং)
+                  </Link>
+
                   {(user?.is_staff || user?.is_superuser) && (
                     <Link
                       to="/admin"
@@ -370,6 +392,24 @@ const Navbar = () => {
                 </span>
               )}
             </button>
+
+            <Link
+              to="/track-order"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-emerald-800 font-bold flex items-center gap-2"
+            >
+              <Truck className="w-4 h-4 text-emerald-700" />
+              <span>অর্ডার ট্র্যাক করুন (Track Order)</span>
+            </Link>
+
+            <Link
+              to="/orders"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-neutral-800 font-medium flex items-center gap-2"
+            >
+              <Package className="w-4 h-4 text-neutral-500" />
+              <span>আমার অর্ডারসমূহ (Order History)</span>
+            </Link>
 
             {(user?.is_staff || user?.is_superuser) && (
               <Link

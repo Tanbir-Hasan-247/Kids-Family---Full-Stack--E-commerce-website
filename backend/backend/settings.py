@@ -175,14 +175,8 @@ SPECTACULAR_SETTINGS = {
 }
 
 # Google OAuth & Frontend Configuration
-GOOGLE_CLIENT_ID = os.environ.get(
-    "GOOGLE_CLIENT_ID",
-    "886064705-m25ukbilut4t1f965ep0oiom5omqjpsk.apps.googleusercontent.com",
-)
-GOOGLE_CLIENT_SECRET = os.environ.get(
-    "GOOGLE_CLIENT_SECRET",
-    "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",
-)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")

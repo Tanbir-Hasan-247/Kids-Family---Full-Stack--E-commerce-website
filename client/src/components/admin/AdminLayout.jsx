@@ -41,8 +41,8 @@ const AdminLayout = ({ children, title = 'Admin Panel' }) => {
   const [pendingCount, setPendingCount] = useState(0);
 
   // Quick admin login form state in case visitor is not logged in as admin
-  const [emailInput, setEmailInput] = useState('admin@gmail.com');
-  const [passwordInput, setPasswordInput] = useState('admin1234');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -249,11 +249,24 @@ const AdminLayout = ({ children, title = 'Admin Panel' }) => {
 
             <button
               onClick={logout}
-              className="w-full flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition text-left"
+              className="w-full flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition text-left cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Sign Out</span>
             </button>
+
+            <div className="pt-2 border-t border-white/5 text-center">
+              <a
+                href="https://www.facebook.com/profile.php?id=100067381342853"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-neutral-400 hover:text-amber-400 transition inline-flex items-center gap-1"
+                title="Developed by Tanbir Hasan"
+              >
+                <span>Dev:</span>
+                <span className="font-semibold text-neutral-300 hover:text-amber-300">Tanbir Hasan</span>
+              </a>
+            </div>
           </div>
         </div>
       </aside>

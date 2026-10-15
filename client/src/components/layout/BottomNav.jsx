@@ -70,16 +70,16 @@ const BottomNav = () => {
             <span className="text-[10px] mt-0.5 font-bold text-[#1b3b2b]">কার্ট ({totalItems})</span>
           </button>
 
-          {/* 4. Orders */}
+          {/* 4. Orders & Tracking */}
           <Link
             to="/orders"
             className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-              isActive('/orders')
+              isActive('/orders') || isActive('/track-order')
                 ? 'text-[#1b3b2b] font-bold'
                 : 'text-neutral-500 hover:text-neutral-800'
             }`}
           >
-            <div className={`p-1 rounded-full ${isActive('/orders') ? 'bg-amber-100/70 text-[#1b3b2b]' : ''}`}>
+            <div className={`p-1 rounded-full ${isActive('/orders') || isActive('/track-order') ? 'bg-amber-100/70 text-[#1b3b2b]' : ''}`}>
               <Package className="w-5 h-5" />
             </div>
             <span className="text-[10px] mt-0.5 tracking-tight">অর্ডার</span>

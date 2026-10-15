@@ -3,6 +3,7 @@ from .views import (
     CheckoutAPIView,
     OrderListAPIView,
     OrderDetailAPIView,
+    TrackOrderAPIView,
     OrderPaymentStubAPIView,
     AdminOrderListAPIView,
     AdminOrderDetailUpdateAPIView,
@@ -13,6 +14,7 @@ app_name = "orders"
 urlpatterns = [
     # Customer endpoints
     path("checkout/", CheckoutAPIView.as_view(), name="checkout"),
+    path("track/", TrackOrderAPIView.as_view(), name="order_track"),
     path("", OrderListAPIView.as_view(), name="order_list"),
     path("<str:order_number>/", OrderDetailAPIView.as_view(), name="order_detail"),
     path("<str:order_number>/pay/", OrderPaymentStubAPIView.as_view(), name="order_pay"),

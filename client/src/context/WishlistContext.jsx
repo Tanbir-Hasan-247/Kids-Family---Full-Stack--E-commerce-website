@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { useAuth } from './AuthContext';
 
 const WishlistContext = createContext();
 
 export const WishlistProvider = ({ children }) => {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [count, setCount] = useState(0);
   const [favoritedIds, setFavoritedIds] = useState(new Set());
@@ -22,7 +24,7 @@ export const WishlistProvider = ({ children }) => {
 
   useEffect(() => {
     fetchWishlist();
-  }, [fetchWishlist]);
+  }, [fetchWishlist, user]);
 
   const toggleWishlist = async (productId) => {
     try {

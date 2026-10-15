@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
-import { CheckCircle2, Package, ArrowRight, Phone, MapPin } from 'lucide-react';
+import { CheckCircle2, Package, ArrowRight, Phone, MapPin, Truck } from 'lucide-react';
 import api from '../api/axios';
 
 const OrderSuccessPage = () => {
@@ -79,20 +79,27 @@ const OrderSuccessPage = () => {
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
+        <Link
+          to={orderNumber ? `/track-order/${orderNumber}` : '/track-order'}
+          className="px-6 py-3 rounded-full bg-[#1b3b2b] text-white text-xs font-bold hover:bg-[#142e22] shadow-md transition flex items-center gap-2 active:scale-95"
+        >
+          <Truck className="w-4 h-4 text-emerald-300" />
+          <span>অর্ডার ট্র্যাক করুন (Track Order)</span>
+        </Link>
         <Link
           to="/products"
-          className="px-6 py-3 rounded-full bg-[#1b3b2b] text-white text-xs font-bold hover:bg-[#142e22] shadow-md transition flex items-center gap-2"
+          className="px-6 py-3 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md transition flex items-center gap-2 active:scale-95"
         >
-          <span>Continue Shopping</span>
+          <span>আরও কেনাকাটা করুন</span>
           <ArrowRight className="w-4 h-4" />
         </Link>
         <Link
           to="/orders"
-          className="px-6 py-3 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold transition flex items-center gap-2"
+          className="px-5 py-3 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold transition flex items-center gap-2 active:scale-95"
         >
-          <Package className="w-4 h-4" />
-          <span>View Order History</span>
+          <Package className="w-4 h-4 text-neutral-500" />
+          <span>অর্ডার হিস্ট্রি</span>
         </Link>
       </div>
     </div>
