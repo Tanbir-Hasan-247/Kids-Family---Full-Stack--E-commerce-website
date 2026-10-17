@@ -14,19 +14,22 @@ export const formatImageUrl = (url) => {
   if (!url) return '';
   if (typeof url !== 'string') return '';
 
-  // Extract from /media/ to keep path relative through Vite proxy
-  // This guarantees images load across localhost, LAN IPs, and Cloudflare tunnels
+  const mediaBase = (import.meta.env.VITE_MEDIA_URL || '').replace(/\/+$/, '');
+
+  // If already absolute URL pointing to external CDN/S3/localhost
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (url.includes('127.0.0.1:8000') || url.includes('localhost:8000')) {
+      const cleanPath = url.replace(/^https?:\/\/(127\.0\.0\.1|localhost):8000/, '');
+      return mediaBase ? `${mediaBase}${cleanPath}` : cleanPath;
+    }
+    return url;
+  }
+
+  // Extract from /media/
   const mediaIdx = url.indexOf('/media/');
   if (mediaIdx !== -1) {
-    return url.slice(mediaIdx);
-  }
-
-  if (url.includes('127.0.0.1:8000') || url.includes('localhost:8000')) {
-    return url.replace(/^https?:\/\/(127\.0\.0\.1|localhost):8000/, '');
-  }
-
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+    const rel = url.slice(mediaIdx);
+    return mediaBase ? `${mediaBase}${rel}` : rel;
   }
 
   if (
@@ -35,10 +38,12 @@ export const formatImageUrl = (url) => {
     url.startsWith('banners/') ||
     url.startsWith('reviews/')
   ) {
-    return `/media/${url}`;
+    const rel = `/media/${url}`;
+    return mediaBase ? `${mediaBase}${rel}` : rel;
   }
 
-  return url.startsWith('/') ? url : `/${url}`;
+  const rel = url.startsWith('/') ? url : `/${url}`;
+  return mediaBase ? `${mediaBase}${rel}` : rel;
 };
 
 const api = axios.create({

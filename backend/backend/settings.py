@@ -18,7 +18,23 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+# Allowed Hosts from environment (e.g. ALLOWED_HOSTS=yourdomain.com,api.yourdomain.com)
+allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = ["*"]
+
+# CSRF Trusted Origins (e.g. CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://api.yourdomain.com)
+csrf_trusted_env = os.environ.get("CSRF_TRUSTED_ORIGINS")
+if csrf_trusted_env:
+    CSRF_TRUSTED_ORIGINS = [h.strip() for h in csrf_trusted_env.split(",") if h.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ]
 
 AUTH_USER_MODEL = "Account.User"
 
@@ -45,6 +61,7 @@ INSTALLED_APPS = [
     "apps.orders",
     "apps.promotions",
     "apps.dashboard",
+    "apps.ai_assistant",
 ]
 
 MIDDLEWARE = [
@@ -118,8 +135,13 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS Configuration - allows seamless connection from frontend apps (Next.js, React, Vue, Flutter, mobile)
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Configuration
+cors_origins_env = os.environ.get("CORS_ALLOWED_ORIGINS")
+if cors_origins_env:
+    CORS_ALLOWED_ORIGINS = [h.strip() for h in cors_origins_env.split(",") if h.strip()]
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -181,5 +203,5 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
 
-
-
+# Google Gemini AI Configuration (Free tier: 15 RPM, 1500 RPD)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Printer,
   Download,
+  RefreshCw,
 } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import OrderInvoiceModal from '../../components/admin/OrderInvoiceModal';
@@ -55,12 +56,42 @@ const AdminOrdersPage = () => {
   const [editPaymentStatus, setEditPaymentStatus] = useState('');
   const [editCancelReason, setEditCancelReason] = useState('');
 
-  const handleExportCSV = () => {
-    let url = '/api/dashboard/export-orders-csv/?';
-    if (statusFilter && statusFilter !== 'all') {
-      url += `?status=${statusFilter}`;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const params = {};
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      const res = await api.get('/dashboard/export-orders-csv/', {
+        params,
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const statusSuffix = statusFilter && statusFilter !== 'all' ? `_${statusFilter}` : '';
+      link.setAttribute('download', `kids_family_orders${statusSuffix}_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+      const token = localStorage.getItem('kf_access_token');
+      const q = statusFilter && statusFilter !== 'all' ? `status=${statusFilter}&` : '';
+      if (token) {
+        window.open(`/api/dashboard/export-orders-csv/?${q}token=${token}`, '_blank');
+      } else {
+        alert('রিপোর্ট ডাউনলোড করতে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার লগইন করুন।');
+      }
+    } finally {
+      setIsExporting(false);
     }
-    window.open(url, '_blank');
   };
 
   const fetchOrders = async () => {
@@ -95,6 +126,25 @@ const AdminOrdersPage = () => {
   useEffect(() => {
     fetchOrders();
   }, [statusFilter, searchQuery]);
+
+  // Lock body scroll and allow ESC key to close modal
+  useEffect(() => {
+    if (selectedOrder) {
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          setSelectedOrder(null);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [selectedOrder]);
 
   const handleOpenDetail = (order) => {
     setSelectedOrder(order);
@@ -188,12 +238,13 @@ const AdminOrdersPage = () => {
             </div>
             <button
               onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer shrink-0"
+              disabled={isExporting}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer shrink-0 disabled:opacity-60"
               title="Download orders as Excel/CSV"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export CSV</span>
-              <span className="sm:hidden">CSV</span>
+              <Download className={`w-3.5 h-3.5 ${isExporting ? 'animate-bounce' : ''}`} />
+              <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export CSV'}</span>
+              <span className="sm:hidden">{isExporting ? '...' : 'CSV'}</span>
             </button>
           </div>
         </div>
@@ -419,31 +470,43 @@ const AdminOrdersPage = () => {
 
         {/* ORDER DETAIL MODAL */}
         {selectedOrder && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full space-y-6 shadow-2xl my-8">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
-                <div>
-                  <span className="text-xs text-neutral-400 font-bold uppercase tracking-wider">
-                    Order Details
+          <div
+            className="fixed inset-0 z-50 bg-black/60 flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto backdrop-blur-xs overscroll-contain"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedOrder(null);
+            }}
+          >
+            <div
+              className="relative bg-white rounded-3xl p-5 sm:p-8 max-w-2xl w-full space-y-6 shadow-2xl my-3 sm:my-8 animate-in fade-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Sticky Mobile-Friendly Header */}
+              <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md pb-4 pt-1 border-b border-neutral-100 flex items-center justify-between -mt-1">
+                <div className="min-w-0 pr-2">
+                  <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">
+                    অর্ডার বিস্তারিত ও স্ট্যাটাস
                   </span>
-                  <h3 className="text-xl font-mono font-black text-neutral-900">
+                  <h3 className="text-base sm:text-xl font-mono font-black text-neutral-900 truncate">
                     {selectedOrder.order_number}
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => setInvoiceOrder(selectedOrder)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer shadow-2xs"
                     title="Print Invoice / চালান"
                   >
                     <Printer className="w-3.5 h-3.5 text-amber-700" />
-                    <span>প্রিন্ট চালান</span>
+                    <span className="hidden sm:inline">প্রিন্ট চালান</span>
+                    <span className="sm:hidden">চালান</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setSelectedOrder(null)}
-                    className="text-neutral-400 hover:text-neutral-700 p-1"
+                    className="w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-neutral-900 transition active:scale-90 cursor-pointer shadow-2xs"
+                    aria-label="Close modal"
+                    title="বন্ধ করুন (Close)"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -627,13 +690,27 @@ const AdminOrdersPage = () => {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-200/60">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrder(null)}
+                    className="px-4 py-2.5 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 font-bold text-xs transition active:scale-95 cursor-pointer shadow-2xs"
+                  >
+                    বন্ধ করুন (Close)
+                  </button>
                   <button
                     type="submit"
                     disabled={updatingStatus}
-                    className="px-6 py-2.5 rounded-xl bg-[#1b3b2b] hover:bg-[#142e22] text-amber-400 font-extrabold text-xs shadow-md transition disabled:opacity-50"
+                    className="px-5 sm:px-6 py-2.5 rounded-xl bg-[#1b3b2b] hover:bg-[#142e22] text-amber-400 font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    {updatingStatus ? 'Saving...' : 'Save Order Status'}
+                    {updatingStatus ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>সেভ হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <span>Save Order Status</span>
+                    )}
                   </button>
                 </div>
               </form>

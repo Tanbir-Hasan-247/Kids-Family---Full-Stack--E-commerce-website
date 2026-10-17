@@ -47,8 +47,35 @@ const AdminDashboardPage = () => {
     fetchDashboardData();
   }, []);
 
-  const handleExportCSV = () => {
-    window.open('/api/dashboard/export-orders-csv/', '_blank');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const res = await api.get('/dashboard/export-orders-csv/', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `kids_family_orders_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+      const token = localStorage.getItem('kf_access_token');
+      if (token) {
+        window.open(`/api/dashboard/export-orders-csv/?token=${token}`, '_blank');
+      } else {
+        alert('রিপোর্ট ডাউনলোড করতে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার লগইন করুন।');
+      }
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const metrics = data?.metrics || {
@@ -95,10 +122,11 @@ const AdminDashboardPage = () => {
             </button>
             <button
               onClick={handleExportCSV}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1b3b2b] hover:bg-[#142e22] text-amber-400 font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+              disabled={isExporting}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1b3b2b] hover:bg-[#142e22] text-amber-400 font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 cursor-pointer disabled:opacity-60"
             >
-              <Download className="w-4 h-4 text-amber-400" />
-              <span>বিক্রয় রিপোর্ট (CSV / Excel)</span>
+              <Download className={`w-4 h-4 text-amber-400 ${isExporting ? 'animate-bounce' : ''}`} />
+              <span>{isExporting ? 'রিপোর্ট তৈরি হচ্ছে...' : 'বিক্রয় রিপোর্ট (CSV / Excel)'}</span>
             </button>
           </div>
         </div>

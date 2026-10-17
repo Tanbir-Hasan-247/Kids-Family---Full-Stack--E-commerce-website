@@ -93,6 +93,7 @@ urlpatterns = [
     path("api/orders/", include("apps.orders.urls")),
     path("api/promotions/", include("apps.promotions.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),
+    path("api/ai/", include("apps.ai_assistant.urls")),
 
     # Direct Google OAuth endpoints matching legacy allauth routes
     path("accounts/google/login/", GoogleOAuthRedirectAPIView.as_view(), name="legacy_google_login"),

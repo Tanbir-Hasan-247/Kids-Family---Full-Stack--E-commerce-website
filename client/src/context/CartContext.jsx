@@ -29,7 +29,7 @@ export const CartProvider = ({ children }) => {
     fetchCart();
   }, [fetchCart, user]);
 
-  const addToCart = async (variantId, quantity = 1) => {
+  const addToCart = async (variantId, quantity = 1, openDrawer = true) => {
     setLoading(true);
     try {
       const res = await api.post('/cart/add/', {
@@ -44,7 +44,9 @@ export const CartProvider = ({ children }) => {
       } else {
         await fetchCart();
       }
-      setIsDrawerOpen(true);
+      if (openDrawer) {
+        setIsDrawerOpen(true);
+      }
       return { success: true, message: res.data.message };
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to add item to bag.';

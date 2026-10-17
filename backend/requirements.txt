@@ -9,3 +9,7 @@ tzdata>=2026.1
 asgiref>=3.12.0
 sqlparse>=0.6.0
 python-dotenv>=1.0.0
+google-genai>=2.31.0
+requests>=2.32.0
+gunicorn>=23.0.0
+whitenoise>=6.8.0

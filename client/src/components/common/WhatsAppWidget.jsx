@@ -12,14 +12,14 @@ const WhatsAppWidget = ({ phoneNumber = '+8801700000000' }) => {
   const waUrl = `https://wa.me/${cleanPhone}?text=${message}`;
 
   return (
-    <aside aria-label="WhatsApp Support" className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end pointer-events-none">
-      {/* Tooltip speech bubble */}
+    <aside aria-label="WhatsApp Support" className="hidden lg:flex fixed bottom-6 right-6 z-40 items-center gap-2.5 pointer-events-none">
+      {/* Tooltip speech bubble (points right to WhatsApp button) */}
       {showTooltip && (
-        <div className="relative mb-2.5 bg-white text-neutral-800 text-xs py-2 px-3.5 rounded-2xl shadow-xl border border-neutral-200/80 max-w-[220px] flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300 pointer-events-auto">
+        <div className="relative bg-white text-neutral-800 text-xs py-2 px-3.5 rounded-2xl shadow-xl border border-neutral-200/80 max-w-[210px] hidden sm:flex items-start gap-2 animate-in fade-in slide-in-from-right-2 duration-300 pointer-events-auto">
           <div className="flex-1">
             <p className="font-bold text-[#1b3b2b] text-[11px] leading-tight">সাহায্য প্রয়োজন?</p>
-            <p className="text-[11px] text-neutral-600 mt-0.5 leading-snug">
-              অর্ডার বা সাইজ সংক্রান্ত তথ্যের জন্য WhatsApp-এ কথা বলুন!
+            <p className="text-[10px] text-neutral-600 mt-0.5 leading-snug">
+              অর্ডার বা সাইজের জন্য WhatsApp-এ কথা বলুন!
             </p>
           </div>
           <button
@@ -29,8 +29,8 @@ const WhatsAppWidget = ({ phoneNumber = '+8801700000000' }) => {
           >
             <X className="w-3.5 h-3.5" />
           </button>
-          {/* Triangle tail */}
-          <div className="absolute -bottom-1.5 right-5 w-3 h-3 bg-white border-b border-r border-neutral-200/80 rotate-45" />
+          {/* Triangle tail pointing right */}
+          <div className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-white border-t border-r border-neutral-200/80 rotate-45" />
         </div>
       )}
 
@@ -39,7 +39,7 @@ const WhatsAppWidget = ({ phoneNumber = '+8801700000000' }) => {
         href={waUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="group relative flex items-center justify-center w-13 h-13 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 pointer-events-auto"
+        className="group relative flex items-center justify-center w-13 h-13 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 pointer-events-auto shrink-0"
         title="Chat on WhatsApp"
       >
         {/* Subtle ping pulse animation */}

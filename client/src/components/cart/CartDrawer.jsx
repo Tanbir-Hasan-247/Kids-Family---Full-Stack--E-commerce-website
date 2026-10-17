@@ -77,7 +77,7 @@ const CartDrawer = () => {
 
   return (
     <div
-      className={`fixed inset-0 z-50 overflow-hidden transition-all duration-300 ${
+      className={`fixed inset-0 z-60 overflow-hidden transition-all duration-300 ${
         isDrawerOpen ? 'pointer-events-auto visible' : 'pointer-events-none invisible'
       }`}
       role="dialog"

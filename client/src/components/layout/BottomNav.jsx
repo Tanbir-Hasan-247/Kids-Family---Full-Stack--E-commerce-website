@@ -2,11 +2,18 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, LayoutGrid, ShoppingBag, Package, Phone, X, MessageCircle } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
+import { useShopSettings } from '../../context/ShopSettingsContext';
 
 const BottomNav = () => {
   const location = useLocation();
   const { totalItems, openDrawer } = useCart();
+  const { settings } = useShopSettings();
   const [showSupportModal, setShowSupportModal] = useState(false);
+
+  const phone = settings?.phone || '+8801700000000';
+  const whatsapp = settings?.whatsapp_number || settings?.phone || '+8801700000000';
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const cleanWa = whatsapp.replace(/[^0-9]/g, '');
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
@@ -126,20 +133,20 @@ const BottomNav = () => {
 
             <div className="space-y-3 pt-1">
               <a
-                href="tel:+8801700000000"
-                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-emerald-700 hover:bg-emerald-800 active:scale-98 text-white rounded-2xl font-bold text-sm shadow-md transition"
+                href={`tel:${phone}`}
+                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-[#1b3b2b] hover:bg-[#142e22] active:scale-98 text-white rounded-2xl font-bold text-sm shadow-md transition"
               >
-                <Phone className="w-4 h-4" />
-                <span>সরাসরি কল করুন (০১৭০০-০০০০০০)</span>
+                <Phone className="w-4 h-4 text-amber-400" />
+                <span>সরাসরি কল করুন ({phone})</span>
               </a>
 
               <a
-                href="https://wa.me/8801700000000?text=Hello%20Kids%20%26%20Family,%20I%20want%20to%20order"
+                href={`https://wa.me/${cleanWa}?text=${encodeURIComponent('আসসালামু আলাইকুম! আমি Kids & Family ওয়েবসাইট থেকে প্রোডাক্ট সংক্রান্ত তথ্য জানতে যোগাযোগ করছি।')}`}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-emerald-500 hover:bg-emerald-600 active:scale-98 text-white rounded-2xl font-bold text-sm shadow-md transition"
+                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-98 text-white rounded-2xl font-bold text-sm shadow-md transition"
               >
-                <MessageCircle className="w-4 h-4" />
+                <MessageCircle className="w-4 h-4 text-white" />
                 <span>হোয়াটসঅ্যাপে মেসেজ দিন</span>
               </a>
             </div>

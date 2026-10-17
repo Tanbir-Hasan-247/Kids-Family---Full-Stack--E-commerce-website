@@ -31,6 +31,7 @@ import AdminBannersPage from './pages/admin/AdminBannersPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 import BottomNav from './components/layout/BottomNav';
 import WhatsAppWidget from './components/common/WhatsAppWidget';
+import AIAssistantWidget from './components/ai/AIAssistantWidget';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -55,6 +56,7 @@ function StorefrontLayout({ children }) {
       <main className="flex-1">{children}</main>
       <Footer />
       <WhatsAppWidget phoneNumber={settings?.whatsapp_number || settings?.phone || '+8801700000000'} />
+      <AIAssistantWidget />
       <BottomNav />
     </div>
   );

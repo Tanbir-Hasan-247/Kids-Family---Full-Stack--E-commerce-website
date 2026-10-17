@@ -13,6 +13,7 @@ import {
   Upload,
   Image as ImageIcon,
   Layers,
+  Sparkles,
 } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import api, { formatImageUrl } from '../../api/axios';
@@ -34,6 +35,7 @@ const AdminProductsPage = () => {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
 
   // Main product form data
   const [formData, setFormData] = useState({
@@ -228,6 +230,41 @@ const AdminProductsPage = () => {
       copy[index] = { ...copy[index], imageFile: file, imagePreview: preview };
       return copy;
     });
+  };
+
+  const handleGenerateAIDescription = async () => {
+    if (!formData.name.trim()) {
+      setFormError('অনুগ্রহ করে প্রথমে প্রোডাক্টের নাম (Product Name) লিখুন, তারপর AI বিবরণ তৈরি করবে।');
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    setFormError('');
+    setFormSuccess('');
+
+    try {
+      const selectedCat = categories.find((c) => String(c.id) === String(formData.category));
+      const res = await api.post('/ai/generate-description/', {
+        name: formData.name.trim(),
+        category: selectedCat ? selectedCat.name : formData.category,
+        base_price: formData.base_price || 0,
+      });
+
+      if (res.data?.success && res.data?.description) {
+        setFormData((prev) => ({
+          ...prev,
+          description: res.data.description,
+        }));
+        setFormSuccess('✨ AI দিয়ে আকর্ষণীয় প্রোডাক্ট বিবরণ তৈরি সম্পন্ন হয়েছে!');
+      } else {
+        setFormError('বিবরণ তৈরি করা সম্ভব হয়নি। অনুগ্রহ করে ম্যানুয়ালি লিখুন।');
+      }
+    } catch (err) {
+      console.error('Failed to generate AI description:', err);
+      setFormError('AI বিবরণ তৈরিতে সমস্যা হয়েছে। সার্ভার সংযোগ পরীক্ষা করুন।');
+    } finally {
+      setIsGeneratingDescription(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -708,15 +745,27 @@ const AdminProductsPage = () => {
                   </div>
 
                   <div>
-                    <label className="block font-bold text-neutral-700 mb-1">
-                      Description
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block font-bold text-neutral-700">
+                        Description / পণ্যের বিবরণ
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateAIDescription}
+                        disabled={isGeneratingDescription || !formData.name.trim()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-[11px] font-bold shadow-xs hover:shadow transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        title="AI দিয়ে আকর্ষণীয় বাংলা ও ইংরেজি বিবরণ স্বয়ংক্রিয়ভাবে তৈরি করুন"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 text-amber-200 ${isGeneratingDescription ? 'animate-spin' : 'animate-pulse'}`} />
+                        <span>{isGeneratingDescription ? 'AI বিবরণ লিখছে...' : '✨ AI দিয়ে বিবরণ লিখুন'}</span>
+                      </button>
+                    </div>
                     <textarea
-                      rows={3}
+                      rows={5}
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Detailed fabric specifications, sizing notes, care guidelines..."
-                      className="w-full px-3.5 py-2 rounded-xl border border-neutral-300 focus:outline-none focus:border-[#1b3b2b] text-xs bg-white"
+                      placeholder="পোশাকের বিস্তারিত কাপড়ের কোয়ালিটি, সাইজ এবং ওয়াশ কেয়ার..."
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 focus:outline-none focus:border-[#1b3b2b] text-xs bg-white leading-relaxed font-normal"
                     />
                   </div>
 

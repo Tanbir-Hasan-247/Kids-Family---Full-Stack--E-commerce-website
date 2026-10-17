@@ -176,10 +176,30 @@ class LowStockAlertAPIView(APIView):
 class ExportOrdersCSVAPIView(APIView):
     """
     Exports orders to a formatted CSV spreadsheet for Excel / Google Sheets.
+    Supports JWT via Authorization header or ?token= query parameter (for direct downloads).
     """
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        user = request.user
+        if not user or not user.is_authenticated:
+            token_param = request.query_params.get("token")
+            if token_param:
+                from rest_framework_simplejwt.tokens import AccessToken
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                try:
+                    access_token = AccessToken(token_param)
+                    user_id = access_token.get("user_id")
+                    user = User.objects.filter(pk=user_id).first()
+                except Exception:
+                    user = None
+
+        if not user or not user.is_authenticated or not (user.is_staff or user.is_superuser):
+            return Response(
+                {"detail": "Authentication credentials were not provided or user is not an admin."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         orders = (
             Order.objects.select_related("user")
             .prefetch_related(

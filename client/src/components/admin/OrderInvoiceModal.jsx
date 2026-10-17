@@ -5,6 +5,22 @@ import { useShopSettings } from '../../context/ShopSettingsContext';
 const OrderInvoiceModal = ({ order, isOpen, onClose }) => {
   const { settings } = useShopSettings();
 
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') onClose();
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen || !order) return null;
 
   const handlePrint = () => {
@@ -18,29 +34,38 @@ const OrderInvoiceModal = ({ order, isOpen, onClose }) => {
   const phone = settings?.phone || '+880 1700-000000';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 print:p-0 print:bg-white print:static">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-2.5 sm:p-6 print:p-0 print:bg-white print:static overscroll-contain"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       {/* Modal Card */}
-      <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-neutral-200 overflow-hidden print:shadow-none print:border-none print:rounded-none">
+      <div
+        className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-neutral-200 overflow-hidden my-3 sm:my-8 print:shadow-none print:border-none print:rounded-none animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Top Control Bar (Hidden on print) */}
-        <div className="flex items-center justify-between px-6 py-4 bg-neutral-100 border-b border-neutral-200 print:hidden">
+        <div className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 bg-neutral-100/95 backdrop-blur-md border-b border-neutral-200 print:hidden">
           <div className="flex items-center gap-2">
             <Package className="w-5 h-5 text-[#1b3b2b]" />
-            <h3 className="font-extrabold text-sm text-neutral-900">
-              Customer Invoice & Parcel Memo
+            <h3 className="font-extrabold text-xs sm:text-sm text-neutral-900 truncate">
+              চালান ও ইনভয়েস
             </h3>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1b3b2b] hover:bg-[#142e22] text-white text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1b3b2b] hover:bg-[#142e22] text-white text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
-              <span>প্রিন্ট করুন (Print)</span>
+              <Printer className="w-4 h-4 text-amber-400" />
+              <span>প্রিন্ট করুন</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl hover:bg-neutral-200 text-neutral-500 hover:text-neutral-800 transition"
-              title="Close"
+              className="w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-xl bg-neutral-200/80 hover:bg-neutral-300 text-neutral-600 hover:text-neutral-900 transition active:scale-90 cursor-pointer"
+              title="বন্ধ করুন (Close)"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
