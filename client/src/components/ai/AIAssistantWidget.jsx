@@ -1,25 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Sparkles,
-  X,
-  Send,
-  ShoppingBag,
-  Truck,
-  RotateCcw,
-  CheckCircle2,
-  Clock,
-  Package,
-  ArrowRight,
-  ExternalLink,
-  ChevronDown,
-  Bot,
-  User as UserIcon,
-} from 'lucide-react';
-import api, { formatImageUrl } from '../../api/axios';
+import { Bot, User as UserIcon, ShoppingBag } from 'lucide-react';
+import api, { getSessionKey } from '../../api/axios';
 import { useCart } from '../../context/CartContext';
+import ChatLauncherButton from './ChatLauncherButton';
+import ChatHeader from './ChatHeader';
+import ChatProductCard from './ChatProductCard';
+import ChatOrderCard from './ChatOrderCard';
+import ChatOrderCreatedCard from './ChatOrderCreatedCard';
+import ChatLiveCartBar from './ChatLiveCartBar';
+import ChatQuickSuggestions from './ChatQuickSuggestions';
+import ChatInputBar from './ChatInputBar';
 
 const QUICK_SUGGESTIONS = [
+  { label: '🛍️ চ্যাটেই সরাসরি অর্ডার', query: 'আমি সরাসরি চ্যাটে অর্ডার করতে চাই' },
   { label: '🚚 ডেলিভারি চার্জ কত?', query: 'ডেলিভারি চার্জ এবং সময় কত লাগবে?' },
   { label: '🛍️ বাবা-ছেলে ম্যাচিং পাঞ্জাবি', query: 'বাবা ও ছেলের জন্য ম্যাচিং পাঞ্জাবি দেখান' },
   { label: '👗 মেয়েদের ফ্রক কালেকশন', query: 'বাচ্চা মেয়েদের সুতি ফ্রক দেখান' },
@@ -47,7 +40,7 @@ export default function AIAssistantWidget() {
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const { addToCart, totalItems, totalPrice, openDrawer } = useCart();
+  const { addToCart, totalItems, totalPrice, openDrawer, fetchCart } = useCart();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -78,6 +71,7 @@ export default function AIAssistantWidget() {
     try {
       const res = await api.post('/ai/chat/', {
         message: textToSend,
+        session_key: getSessionKey(),
         history: messages.slice(-6).map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           text: m.text,
@@ -92,11 +86,17 @@ export default function AIAssistantWidget() {
         text: responseData.reply || 'দুঃখিত, কোনো উত্তর পাওয়া যায়নি।',
         products: responseData.products || [],
         order: responseData.order || null,
+        orderCreated: !!responseData.order_created,
         intent: responseData.intent || 'general',
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, aiMessage]);
+
+      // If order was created, refresh cart so any cart items converted to order disappear
+      if (responseData.order_created && fetchCart) {
+        fetchCart();
+      }
     } catch (err) {
       console.error('AI Chat Error:', err);
       setMessages((prev) => [
@@ -121,7 +121,8 @@ export default function AIAssistantWidget() {
     if (!product || addingId) return;
 
     try {
-      const variantId = product.primary_variant_id || (product.variants && product.variants[0]?.id);
+      const variantId =
+        product.primary_variant_id || (product.variants && product.variants[0]?.id);
       if (variantId) {
         setAddingId(product.id);
         const res = await addToCart(variantId, 1, false);
@@ -153,29 +154,14 @@ export default function AIAssistantWidget() {
 
   return (
     <>
-      {/* Floating Launcher Button (Positioned neatly above WhatsApp button) */}
+      {/* Floating Launcher Button */}
       {!isOpen && (
-        <div className="fixed bottom-20 lg:bottom-22 right-4 sm:right-6 z-40 flex items-center pointer-events-auto">
-          <button
-            onClick={() => {
-              setIsOpen(true);
-              setIsMinimized(false);
-            }}
-            className="flex items-center gap-2 bg-linear-to-r from-[#1b3b2b] via-[#244f3a] to-[#1b3b2b] text-white px-3.5 py-2.5 sm:px-4 sm:py-2.5 rounded-full shadow-xl hover:shadow-2xl border-2 border-amber-400 hover:border-amber-300 transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer group"
-            aria-label="Open AI Assistant"
-          >
-            <div className="relative">
-              <Sparkles className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-300 animate-pulse" />
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
-            </div>
-            <div className="flex flex-col text-left pr-0.5">
-              <span className="text-[9px] font-black uppercase tracking-wider text-amber-300 leading-none">
-                AI Assistant
-              </span>
-              <span className="text-xs font-bold leading-tight">শপিং সহকারী</span>
-            </div>
-          </button>
-        </div>
+        <ChatLauncherButton
+          onClick={() => {
+            setIsOpen(true);
+            setIsMinimized(false);
+          }}
+        />
       )}
 
       {/* Chat Drawer / Modal */}
@@ -189,49 +175,12 @@ export default function AIAssistantWidget() {
         >
           <div className="flex flex-col h-full bg-white sm:rounded-3xl shadow-2xl border border-neutral-200/90 overflow-hidden">
             {/* Header */}
-            <div className="bg-linear-to-r from-[#1b3b2b] to-[#12281d] text-white p-3.5 sm:p-4 flex items-center justify-between shadow-md shrink-0 select-none">
-              <div className="flex items-center gap-3">
-                <div className="relative w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/50 flex items-center justify-center shrink-0">
-                  <Bot className="w-5 h-5 text-amber-300" />
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#1b3b2b] rounded-full" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-xs sm:text-sm font-extrabold text-amber-300 tracking-tight">
-                      Kids & Family AI
-                    </h3>
-                    <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-400/30">
-                      Active
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-neutral-300">২৪/৭ স্মার্ট শপিং ও অর্ডার সহায়তা</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleResetChat}
-                  title="নতুন কথোপকথন শুরু করুন"
-                  className="p-1.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-lg transition"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setIsMinimized(!isMinimized)}
-                  title={isMinimized ? 'বড় করুন' : 'মিনিমাইজ করুন'}
-                  className="p-1.5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-lg transition"
-                >
-                  <ChevronDown className={`w-4 h-4 transition-transform ${isMinimized ? 'rotate-180' : ''}`} />
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  title="বন্ধ করুন"
-                  className="p-1.5 text-neutral-300 hover:text-rose-400 hover:bg-white/10 rounded-lg transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+            <ChatHeader
+              isMinimized={isMinimized}
+              onReset={handleResetChat}
+              onToggleMinimize={() => setIsMinimized(!isMinimized)}
+              onClose={() => setIsOpen(false)}
+            />
 
             {/* Chat Body (Hidden when minimized) */}
             {!isMinimized && (
@@ -258,7 +207,11 @@ export default function AIAssistantWidget() {
                         </div>
 
                         {/* Content */}
-                        <div className={`space-y-2 ${isAi && m.products?.length > 0 ? 'w-full max-w-full' : 'max-w-[84%]'} ${isAi ? '' : 'text-right'}`}>
+                        <div
+                          className={`space-y-2 ${
+                            isAi && m.products?.length > 0 ? 'w-full max-w-full' : 'max-w-[84%]'
+                          } ${isAi ? '' : 'text-right'}`}
+                        >
                           <div
                             className={`p-3 rounded-2xl shadow-xs leading-relaxed whitespace-pre-wrap break-words ${
                               isAi
@@ -269,79 +222,20 @@ export default function AIAssistantWidget() {
                             {m.text}
                           </div>
 
-                          {/* Order Tracking Progress Card (If order matched) */}
-                          {m.order && (
-                            <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 space-y-3 text-left shadow-xs">
-                              <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                                <div>
-                                  <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
-                                    অর্ডার আইডি
-                                  </span>
-                                  <p className="font-mono font-black text-xs text-[#1b3b2b]">
-                                    {m.order.order_number}
-                                  </p>
-                                </div>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                                  {m.order.status_title}
-                                </span>
-                              </div>
+                          {/* Order Created Celebration Card */}
+                          {m.order && m.orderCreated && (
+                            <ChatOrderCreatedCard
+                              order={m.order}
+                              onNavigate={() => setIsOpen(false)}
+                            />
+                          )}
 
-                              {/* Progress Step Stepper */}
-                              <div className="py-1">
-                                <div className="grid grid-cols-5 gap-1 items-center text-center">
-                                  {['গৃহীত', 'কনফার্মড', 'প্রসেসিং', 'শিপড', 'ডেলিভারি'].map((stepName, i) => {
-                                    const stepIdx = i + 1;
-                                    const isDone = m.order.step >= stepIdx;
-                                    const isCurrent = m.order.step === stepIdx;
-
-                                    return (
-                                      <div key={stepName} className="flex flex-col items-center">
-                                        <div
-                                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                            isDone
-                                              ? 'bg-emerald-600 text-white'
-                                              : isCurrent
-                                                ? 'bg-amber-500 text-white animate-pulse'
-                                                : 'bg-neutral-200 text-neutral-500'
-                                          }`}
-                                        >
-                                          {isDone ? '✓' : stepIdx}
-                                        </div>
-                                        <span className="text-[9px] mt-1 text-neutral-500 font-medium truncate w-full">
-                                          {stepName}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              <div className="text-[11px] text-neutral-600 bg-neutral-50 p-2.5 rounded-xl space-y-1">
-                                <div className="flex justify-between">
-                                  <span>গ্রাহক:</span>
-                                  <span className="font-bold text-neutral-800">{m.order.full_name}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>মোট বিল:</span>
-                                  <span className="font-black text-[#1b3b2b]">
-                                    ৳{Number(m.order.total).toLocaleString()} ({m.order.payment_method})
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>ঠিকানা:</span>
-                                  <span className="text-neutral-700 truncate max-w-[170px]">{m.order.address}</span>
-                                </div>
-                              </div>
-
-                              <Link
-                                to={`/track-order/${m.order.order_number}`}
-                                onClick={() => setIsOpen(false)}
-                                className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-[#1b3b2b] text-white rounded-xl font-bold text-xs hover:bg-[#234d38] transition shadow-xs"
-                              >
-                                <span>পূর্ণাঙ্গ ট্র্যাকিং পেজ দেখুন</span>
-                                <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-                              </Link>
-                            </div>
+                          {/* Order Tracking Progress Card */}
+                          {m.order && !m.orderCreated && (
+                            <ChatOrderCard
+                              order={m.order}
+                              onNavigate={() => setIsOpen(false)}
+                            />
                           )}
 
                           {/* Recommended Product Cards List */}
@@ -358,110 +252,16 @@ export default function AIAssistantWidget() {
                               </div>
 
                               <div className="flex flex-col gap-2.5">
-                                {m.products.map((p) => {
-                                  const isAdded = !!addedProductIds[p.id];
-                                  const isCurrentAdding = addingId === p.id;
-
-                                  return (
-                                    <div
-                                      key={p.id}
-                                      className={`bg-white border rounded-2xl p-2.5 sm:p-3 shadow-xs transition-all duration-200 flex flex-col justify-between ${
-                                        isAdded
-                                          ? 'border-emerald-500/80 bg-emerald-50/20 shadow-xs'
-                                          : 'border-neutral-200/90 hover:border-amber-400 hover:shadow-md'
-                                      }`}
-                                    >
-                                      <div className="flex items-start gap-3">
-                                        {/* Thumbnail */}
-                                        <Link
-                                          to={`/products/${p.id}`}
-                                          onClick={() => setIsOpen(false)}
-                                          className="w-16 h-16 rounded-xl bg-neutral-100 border border-neutral-200/80 overflow-hidden shrink-0 flex items-center justify-center group"
-                                        >
-                                          {p.thumbnail ? (
-                                            <img
-                                              src={formatImageUrl(p.thumbnail)}
-                                              alt={p.name}
-                                              className="w-full h-full object-cover group-hover:scale-105 transition"
-                                              loading="lazy"
-                                            />
-                                          ) : (
-                                            <Package className="w-6 h-6 text-neutral-300" />
-                                          )}
-                                        </Link>
-
-                                        {/* Info */}
-                                        <div className="flex-1 min-w-0">
-                                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm inline-block mb-0.5">
-                                            {p.category_name}
-                                          </span>
-                                          <Link
-                                            to={`/products/${p.id}`}
-                                            onClick={() => setIsOpen(false)}
-                                            className="font-bold text-neutral-900 text-xs line-clamp-1 hover:text-[#1b3b2b] transition block"
-                                            title={p.name}
-                                          >
-                                            {p.name}
-                                          </Link>
-
-                                          {/* Price & Discount */}
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <span className="font-black text-xs text-[#1b3b2b]">
-                                              ৳{Number(p.starting_price).toLocaleString()}
-                                            </span>
-                                            {p.is_on_sale && p.max_discount > 0 && (
-                                              <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded-full border border-rose-200/60">
-                                                -{p.max_discount}%
-                                              </span>
-                                            )}
-                                            {p.available_sizes && p.available_sizes.length > 0 && (
-                                              <span className="text-[9px] text-neutral-500 truncate">
-                                                সাইজ: {p.available_sizes.join(', ')}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Action Row */}
-                                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-neutral-100">
-                                        <button
-                                          onClick={(e) => handleAddToCartFromCard(e, p)}
-                                          disabled={isCurrentAdding}
-                                          className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs transition-all duration-200 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
-                                            isAdded
-                                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                              : 'bg-[#1b3b2b] text-white hover:bg-[#25523c] active:scale-[0.98]'
-                                          }`}
-                                        >
-                                          {isAdded ? (
-                                            <>
-                                              <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                                              <span>কার্টে যোগ হয়েছে!</span>
-                                            </>
-                                          ) : isCurrentAdding ? (
-                                            <span>যুক্ত হচ্ছে...</span>
-                                          ) : (
-                                            <>
-                                              <ShoppingBag className="w-3.5 h-3.5 text-amber-300" />
-                                              <span>কার্টে নিন (Add to Cart)</span>
-                                            </>
-                                          )}
-                                        </button>
-
-                                        <Link
-                                          to={`/products/${p.id}`}
-                                          onClick={() => setIsOpen(false)}
-                                          className="p-1.5 px-2.5 rounded-xl border border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-50 font-semibold text-[10px] flex items-center gap-1 shrink-0"
-                                          title="বিস্তারিত দেখুন"
-                                        >
-                                          <span>বিস্তারিত</span>
-                                          <ArrowRight className="w-3 h-3" />
-                                        </Link>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                                {m.products.map((p) => (
+                                  <ChatProductCard
+                                    key={p.id}
+                                    product={p}
+                                    isAdded={!!addedProductIds[p.id]}
+                                    isAdding={addingId === p.id}
+                                    onAddToCart={handleAddToCartFromCard}
+                                    onNavigate={() => setIsOpen(false)}
+                                  />
+                                ))}
                               </div>
                             </div>
                           )}
@@ -487,78 +287,32 @@ export default function AIAssistantWidget() {
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Live In-Chat Cart Bar (Appears when items are in cart) */}
-                {totalItems > 0 && (
-                  <div className="bg-emerald-50/95 border-t border-b border-emerald-200/80 px-3.5 py-2 flex items-center justify-between text-xs shrink-0 select-none shadow-xs">
-                    <div className="flex items-center gap-1.5 text-emerald-950 font-bold">
-                      <ShoppingBag className="w-4 h-4 text-emerald-700" />
-                      <span>কার্টে {totalItems}টি পণ্য (৳{Number(totalPrice).toLocaleString()})</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setIsMinimized(true);
-                          openDrawer();
-                        }}
-                        className="px-2.5 py-1 bg-[#1b3b2b] text-white rounded-lg font-bold text-[11px] hover:bg-[#285740] transition cursor-pointer shadow-xs"
-                      >
-                        ব্যাগ দেখুন
-                      </button>
-                      <Link
-                        to="/checkout"
-                        onClick={() => setIsOpen(false)}
-                        className="px-2.5 py-1 bg-amber-500 text-neutral-900 rounded-lg font-black text-[11px] hover:bg-amber-400 transition shadow-xs"
-                      >
-                        অর্ডার সম্পন্ন করুন ➔
-                      </Link>
-                    </div>
-                  </div>
-                )}
+                {/* Live In-Chat Cart Bar */}
+                <ChatLiveCartBar
+                  totalItems={totalItems}
+                  totalPrice={totalPrice}
+                  onViewBag={() => {
+                    setIsMinimized(true);
+                    openDrawer();
+                  }}
+                  onCheckout={() => setIsOpen(false)}
+                />
 
                 {/* Quick Suggestion Pills */}
-                <div className="p-2 bg-white border-t border-neutral-100 flex gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-                  {QUICK_SUGGESTIONS.map((item) => (
-                    <button
-                      key={item.label}
-                      onClick={() => handleSendMessage(item.query)}
-                      disabled={isLoading}
-                      className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-amber-100 hover:text-amber-900 text-neutral-700 text-[11px] font-medium whitespace-nowrap border border-neutral-200/70 transition shrink-0 active:scale-95"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+                <ChatQuickSuggestions
+                  suggestions={QUICK_SUGGESTIONS}
+                  isLoading={isLoading}
+                  onSelect={(query) => handleSendMessage(query)}
+                />
 
                 {/* Input Bar */}
-                <div className="p-3 bg-white border-t border-neutral-200 shrink-0">
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      placeholder="পোশাক খুঁজুন বা প্রশ্ন লিখুন..."
-                      disabled={isLoading}
-                      className="flex-1 px-3.5 py-2.5 text-xs bg-neutral-100 border border-transparent rounded-2xl focus:bg-white focus:border-[#1b3b2b] focus:outline-none transition placeholder:text-neutral-400"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!inputValue.trim() || isLoading}
-                      className="w-10 h-10 rounded-2xl bg-[#1b3b2b] text-amber-400 hover:bg-[#25523c] flex items-center justify-center transition disabled:opacity-40 disabled:cursor-not-allowed shadow-xs shrink-0"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
-                  <p className="text-[9px] text-center text-neutral-400 mt-1.5 font-medium">
-                    Kids & Family AI Assistant • Real-time Order & Product Recommendations
-                  </p>
-                </div>
+                <ChatInputBar
+                  inputValue={inputValue}
+                  setInputValue={setInputValue}
+                  isLoading={isLoading}
+                  onSubmit={() => handleSendMessage()}
+                  inputRef={inputRef}
+                />
               </>
             )}
           </div>
@@ -567,4 +321,3 @@ export default function AIAssistantWidget() {
     </>
   );
 }
-

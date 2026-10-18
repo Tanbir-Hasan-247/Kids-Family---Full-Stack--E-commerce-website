@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ShoppingBag } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useShopSettings } from '../../context/ShopSettingsContext';
-import { formatImageUrl } from '../../api/axios';
-import VariantBadges from '../common/VariantBadges';
+import CartDrawerHeader from './CartDrawerHeader';
+import CartDrawerItem from './CartDrawerItem';
+import CartDrawerFooter from './CartDrawerFooter';
 
 const CartDrawer = () => {
   const navigate = useNavigate();
@@ -84,11 +85,7 @@ const CartDrawer = () => {
       aria-modal="true"
       aria-label="Shopping Cart Drawer"
     >
-      {/* 
-        Dark Translucent Backdrop:
-        - On mobile, leaves ~15% visible on the left side so user clearly sees the right-side drawer
-        - Tapping anywhere on backdrop closes drawer
-      */}
+      {/* Dark Translucent Backdrop */}
       <div
         className={`fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-in-out cursor-pointer ${
           isDrawerOpen ? 'opacity-100' : 'opacity-0'
@@ -107,25 +104,10 @@ const CartDrawer = () => {
           }`}
         >
           {/* Header */}
-          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/80 shrink-0">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-[#1b3b2b]" />
-              <h2 className="text-sm sm:text-base font-extrabold text-neutral-900">
-                শপিং ব্যাগ (Cart)
-              </h2>
-              <span className="text-[11px] sm:text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
-                {totalItems}
-              </span>
-            </div>
-            <button
-              onClick={closeDrawer}
-              className="p-1.5 text-neutral-400 hover:text-neutral-700 active:scale-95 rounded-full hover:bg-neutral-100 transition cursor-pointer"
-              title="Close Bag"
-              aria-label="Close Shopping Bag"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <CartDrawerHeader
+            totalItems={totalItems}
+            onClose={closeDrawer}
+          />
 
           {/* Cart Items List */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 divide-y divide-neutral-100 overscroll-contain">
@@ -149,117 +131,24 @@ const CartDrawer = () => {
               </div>
             ) : (
               items.map((item) => (
-                <div key={item.id} className="py-3.5 flex gap-3 items-center">
-                  {/* Thumbnail */}
-                  <div className="w-16 h-20 sm:w-18 sm:h-22 bg-neutral-100 rounded-lg overflow-hidden shrink-0 border border-neutral-200">
-                    <img
-                      src={
-                        formatImageUrl(item.variant?.image) ||
-                        'https://placehold.co/200x260/1a1a1a/d4af37?text=KF'
-                      }
-                      alt={item.product_name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-neutral-900 truncate">
-                      {item.product_name}
-                    </h4>
-
-                    {/* Variant Attributes (Color & Size Badges) */}
-                    <VariantBadges variant={item.variant} className="mt-1" />
-
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs font-black text-[#1b3b2b]">
-                        ৳{item.variant?.price}
-                      </span>
-                      {item.variant?.compare_at_price && (
-                        <span className="text-[10px] text-neutral-400 line-through">
-                          ৳{item.variant.compare_at_price}
-                        </span>
-                      )}
-                      {item.variant?.sku && (
-                        <span className="text-[9px] text-neutral-400 ml-auto font-mono">
-                          {item.variant.sku}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Quantity controls */}
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center border border-neutral-200 rounded-lg bg-neutral-50">
-                        <button
-                          onClick={() => updateQuantity(item.id, 'decrease')}
-                          className="p-1 hover:text-amber-700 active:scale-90 transition cursor-pointer"
-                          aria-label="Decrease quantity"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="px-2 text-xs font-bold text-neutral-800">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() => updateQuantity(item.id, 'increase')}
-                          className="p-1 hover:text-amber-700 active:scale-90 transition cursor-pointer"
-                          aria-label="Increase quantity"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="text-neutral-400 hover:text-rose-500 active:scale-90 p-1 transition cursor-pointer"
-                        title="পণ্যটি মুছে ফেলুন"
-                        aria-label="Remove item"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <CartDrawerItem
+                  key={item.id}
+                  item={item}
+                  onUpdateQuantity={updateQuantity}
+                  onRemove={removeItem}
+                />
               ))
             )}
           </div>
 
           {/* Footer */}
           {items.length > 0 && (
-            <div
-              className="border-t border-neutral-200 p-4 sm:p-5 space-y-3 bg-neutral-50/90 shrink-0 shadow-inner"
-              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
-            >
-              <div className="space-y-1 text-xs text-neutral-600">
-                <div className="flex justify-between">
-                  <span>সাবটোটাল</span>
-                  <span className="font-bold text-neutral-900">৳{parsedTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-[11px] text-neutral-500">
-                  <span>ডেলিভারি চার্জ</span>
-                  <span className="font-semibold text-neutral-800">৳{shippingFee}</span>
-                </div>
-                <div className="flex justify-between text-sm font-black text-neutral-900 pt-1.5 border-t border-neutral-200">
-                  <span>মোট প্রদেয়</span>
-                  <span className="text-[#1b3b2b] text-base">৳{grandTotal.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCheckoutClick}
-                className="w-full py-3 px-4 bg-[#1b3b2b] hover:bg-[#142e22] active:scale-98 text-amber-400 rounded-xl font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
-              >
-                <span>অর্ডার সম্পন্ন করুন</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={closeDrawer}
-                className="w-full text-center text-xs text-neutral-500 hover:text-neutral-800 font-medium py-1 transition cursor-pointer"
-              >
-                আরো পণ্য দেখুন (Continue Shopping)
-              </button>
-            </div>
+            <CartDrawerFooter
+              parsedTotal={parsedTotal}
+              shippingFee={shippingFee}
+              grandTotal={grandTotal}
+              onCheckout={handleCheckoutClick}
+            />
           )}
         </div>
       </div>
@@ -268,4 +157,3 @@ const CartDrawer = () => {
 };
 
 export default CartDrawer;
-
