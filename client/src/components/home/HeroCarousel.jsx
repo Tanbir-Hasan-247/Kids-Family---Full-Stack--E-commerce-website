@@ -3,34 +3,6 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import api, { formatImageUrl } from '../../api/axios';
 
-// Fallback high-res graphical banners
-const DEFAULT_SLIDES = [
-  {
-    id: 'def-1',
-    title: 'Festive Family Matching Combo',
-    image: '/media/sliders/slider_banner_1_family.jpg',
-    link_url: '/products?cat=matching-sets-boy',
-  },
-  {
-    id: 'def-2',
-    title: 'Royal Panjabi & Koti (Father & Son)',
-    image: '/media/sliders/slider_banner_2_panjabi.jpg',
-    link_url: '/products?cat=panjabi-koti-boy',
-  },
-  {
-    id: 'def-3',
-    title: 'Joyful Kids Wear (Boys & Girls)',
-    image: '/media/sliders/slider_banner_3_kids.jpg',
-    link_url: '/products?cat=boy',
-  },
-  {
-    id: 'def-4',
-    title: "Girls' Elegant Party & Frock Sets",
-    image: '/media/sliders/slider_banner_4_frocks.jpg',
-    link_url: '/products?cat=frock-dress-girl',
-  },
-];
-
 const HeroCarousel = () => {
   const [slides, setSlides] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -50,14 +22,11 @@ const HeroCarousel = () => {
           : Array.isArray(res.data?.results)
             ? res.data.results
             : [];
-        if (isMounted && data.length > 0) {
+        if (isMounted) {
           setSlides(data);
-        } else if (isMounted) {
-          setSlides(DEFAULT_SLIDES);
         }
       } catch (err) {
-        console.warn('Hero sliders fetch notice, using fallback slides:', err.message);
-        if (isMounted) setSlides(DEFAULT_SLIDES);
+        if (isMounted) setSlides([]);
       }
     };
 
@@ -123,7 +92,24 @@ const HeroCarousel = () => {
   if (slides.length === 0) {
     return (
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-4">
-        <div className="w-full aspect-[2.5/1] max-h-[460px] rounded-xl sm:rounded-2xl lg:rounded-3xl bg-neutral-100 animate-pulse" />
+        <div className="relative w-full rounded-2xl lg:rounded-3xl overflow-hidden bg-gradient-to-r from-[#1b3b2b] via-[#244f3a] to-[#142e22] text-white p-7 sm:p-12 lg:p-16 shadow-md flex flex-col justify-center items-start space-y-3 sm:space-y-4">
+          <span className="bg-amber-400/20 text-amber-300 text-[11px] sm:text-xs font-bold px-3 py-1 rounded-full border border-amber-400/30">
+            প্রিমিয়াম ফ্যামিলি ফ্যাশন
+          </span>
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight max-w-2xl">
+            বাচ্চা ও পরিবারের সেরা পোশাক কালেকশন
+          </h1>
+          <p className="text-xs sm:text-sm md:text-base text-emerald-100/90 max-w-xl">
+            ১০০% সুতি আরামদায়ক কাপড়, প্রিমিয়াম ফিনিশিং এবং আকর্ষণীয় ডিজাইনের ট্রেন্ডি পোশাক।
+          </p>
+          <Link
+            to="/products"
+            className="mt-2 inline-flex items-center gap-2 px-6 py-3 bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-xs sm:text-sm rounded-full transition shadow-md active:scale-95"
+          >
+            <span>কালেকশন দেখুন</span>
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
       </section>
     );
   }

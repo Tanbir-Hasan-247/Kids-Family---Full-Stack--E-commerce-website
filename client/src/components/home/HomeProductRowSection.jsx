@@ -11,8 +11,9 @@ const HomeProductRowSection = ({
   bannerClass,
   buttonClass,
   products,
-  emptyText = 'এই ক্যাটাগরিতে পণ্য লোড হচ্ছে...',
 }) => {
+  if (!products || products.length === 0) return null;
+
   return (
     <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
       <div className={`flex items-center justify-between mb-4 sm:mb-6 ${bannerClass}`}>

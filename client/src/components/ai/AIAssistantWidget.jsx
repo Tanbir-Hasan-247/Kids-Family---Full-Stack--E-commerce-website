@@ -72,9 +72,11 @@ export default function AIAssistantWidget() {
       const res = await api.post('/ai/chat/', {
         message: textToSend,
         session_key: getSessionKey(),
-        history: messages.slice(-6).map((m) => ({
+        history: messages.slice(-12).map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           text: m.text,
+          products: m.products || [],
+          product_ids: (m.products || []).map((p) => p.id),
         })),
       });
 
@@ -93,9 +95,13 @@ export default function AIAssistantWidget() {
 
       setMessages((prev) => [...prev, aiMessage]);
 
-      // If order was created, refresh cart so any cart items converted to order disappear
-      if (responseData.order_created && fetchCart) {
+      // If order was created or cart was updated, refresh cart
+      if ((responseData.order_created || responseData.cart_updated) && fetchCart) {
         fetchCart();
+      }
+
+      if (responseData.cart_updated && responseData.added_product_id) {
+        setAddedProductIds((prev) => ({ ...prev, [responseData.added_product_id]: true }));
       }
     } catch (err) {
       console.error('AI Chat Error:', err);

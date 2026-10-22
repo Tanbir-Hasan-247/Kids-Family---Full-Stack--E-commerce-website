@@ -5,6 +5,8 @@ export default function ProductCategoryStrip({
   selectedCat,
   updateParam,
 }) {
+  if (!categories || categories.length === 0) return null;
+
   return (
     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 pt-0.5 -mx-3 px-3 sm:mx-0 sm:px-0 mb-4">
       <button

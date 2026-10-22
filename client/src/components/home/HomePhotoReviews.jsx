@@ -2,78 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { Star, Camera, X, MessageSquare, Sparkles, CheckCircle2 } from 'lucide-react';
 import api, { formatImageUrl } from '../../api/axios';
 
-// Curated high-converting seed photo reviews so the storefront looks vibrant and trusted immediately
-const DEFAULT_PHOTO_REVIEWS = [
-  {
-    id: 'sample-1',
-    user_name: 'শারমিন আক্তার',
-    location: 'উত্তরা, ঢাকা',
-    rating: 5,
-    comment: 'আমার ৩ বছরের বাবুর জন্মদিনে এই ড্রেসটি পরিয়েছিলাম। ফেব্রিক খুবই নরম ও স্কিন ফ্রেন্ডলি, বাবু পরে দারুণ খুশি হয়েছে!',
-    image: 'https://images.unsplash.com/photo-1622290291468-a28f7a7dc6a8?q=80&w=800&auto=format&fit=crop',
-    tag: 'বাচ্চার জন্মদিনের ড্রেস',
-  },
-  {
-    id: 'sample-2',
-    user_name: 'তৌহিদুল ইসলাম',
-    location: 'পাঁচলাইশ, চট্টগ্রাম',
-    rating: 5,
-    comment: 'ছেলের ঈদের পোলো শার্টের ফিটিং আর কালার একদম ছবির মতোই নিখুঁত। ১০০% পিওর সুতি কাপড়, ধোয়ার পরেও কোনো রং উঠেনি।',
-    image: 'https://images.unsplash.com/photo-1519457431-44ccd64a579b?q=80&w=800&auto=format&fit=crop',
-    tag: 'প্রিমিয়াম পোলো সেট',
-  },
-  {
-    id: 'sample-3',
-    user_name: 'ফারিহা জাহান',
-    location: 'ধানমন্ডি, ঢাকা',
-    rating: 5,
-    comment: 'মেয়ের জন্য ফ্রকটা নিয়েছিলাম। স্টিচিং কোয়ালিটি অনেক প্রিমিয়াম আর ঘেরটাও সুন্দর। ডেলিভারিও মাত্র ২ দিনে পেয়েছি!',
-    image: 'https://images.unsplash.com/photo-1543332164-6e82f355badc?q=80&w=800&auto=format&fit=crop',
-    tag: 'ফ্লোরাল ফ্রক কালেকশন',
-  },
-  {
-    id: 'sample-4',
-    user_name: 'তানজিলা রহমান',
-    location: 'উপশহর, সিলেট',
-    rating: 5,
-    comment: 'ফ্যামিলি ম্যাচিং সেটটা পরে ফ্যামিলি পিকচার তোলার পর সবাই দারুণ প্রশংসা করেছে। এক কথায় অসাধারণ কোয়ালিটি!',
-    image: 'https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?q=80&w=800&auto=format&fit=crop',
-    tag: 'ফ্যামিলি ম্যাচিং কম্বো',
-  },
-  {
-    id: 'sample-5',
-    user_name: 'মাহমুদুল হাসান',
-    location: 'বোয়ালিয়া, রাজশাহী',
-    rating: 5,
-    comment: 'অনলাইনে কাপড় কিনে সচরাচর এমন সন্তুষ্টি মেলে না। সাইজ পারফেক্ট হয়েছে এবং গরমে বাবু খুব আরাম পেয়েছে। থ্যাংক ইউ!',
-    image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?q=80&w=800&auto=format&fit=crop',
-    tag: 'সামার কমফোর্ট ওয়্যার',
-  },
-];
-
 const HomePhotoReviews = () => {
-  const [reviews, setReviews] = useState(DEFAULT_PHOTO_REVIEWS);
+  const [reviews, setReviews] = useState([]);
   const [activeModal, setActiveModal] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchLiveReviews = async () => {
       try {
         const res = await api.get('/products/photo-reviews/');
         const data = Array.isArray(res.data) ? res.data : res.data?.results || [];
-        if (data.length > 0) {
-          // Format image URLs and combine with curated samples
+        if (isMounted && data.length > 0) {
           const formatted = data.map((item) => ({
             ...item,
             image: formatImageUrl(item.image_url || item.image),
           }));
-          setReviews([...formatted, ...DEFAULT_PHOTO_REVIEWS].slice(0, 8));
+          setReviews(formatted.slice(0, 8));
         }
       } catch (err) {
-        // Fallback gracefully to curated default reviews
+        // Silently handle if no photo reviews exist yet
       }
     };
     fetchLiveReviews();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Real-world e-commerce: Do not render mock reviews if no live photo reviews exist in the database
+  if (!reviews || reviews.length === 0) return null;
 
   return (
     <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">

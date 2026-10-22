@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { ShoppingBag } from 'lucide-react';
 import api from '../api/axios';
 import HeroCarousel from '../components/home/HeroCarousel';
 import HomeCategoryGrid from '../components/home/HomeCategoryGrid';
@@ -38,7 +40,7 @@ const HomePage = () => {
         let famData = normalize(familyRes.data);
 
         // If family sets query is small, fallback to top products with matching/family keyword or latest
-        if (famData.length === 0) {
+        if (famData.length === 0 && featData.length > 0) {
           famData = featData.slice(0, 4);
         }
 
@@ -57,10 +59,40 @@ const HomePage = () => {
     loadHomeData();
   }, []);
 
+  const hasAnyContent =
+    (categories && categories.length > 0) ||
+    (featuredProducts && featuredProducts.length > 0) ||
+    (boysProducts && boysProducts.length > 0) ||
+    (girlsProducts && girlsProducts.length > 0) ||
+    (familyProducts && familyProducts.length > 0);
+
   return (
     <div className="space-y-10 sm:space-y-14 md:space-y-20 pb-16">
       {/* 1. HERO CAROUSEL SECTION */}
       <HeroCarousel />
+
+      {/* Real-World Empty State: When store is newly deployed and no products have been created yet */}
+      {!loading && !hasAnyContent && (
+        <section className="max-w-4xl mx-auto px-4 py-12 text-center space-y-4 bg-white rounded-3xl border border-neutral-200/80 p-8 shadow-xs">
+          <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center mx-auto">
+            <ShoppingBag className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black text-neutral-900">
+            শীঘ্রই নতুন কালেকশন আসছে!
+          </h3>
+          <p className="text-xs sm:text-sm text-neutral-500 max-w-md mx-auto">
+            Kids & Family-এর আকর্ষণীয় সব পোশাক কালেকশন খুব শীঘ্রই যুক্ত করা হচ্ছে। আমাদের সঙ্গেই থাকুন।
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#1b3b2b] hover:bg-[#142e22] text-amber-400 font-bold text-xs rounded-full transition shadow-md"
+            >
+              <span>সকল পণ্য ব্রাউজ করুন</span>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* 2. CATEGORIES HORIZONTAL BAR (GhorerBazar style) */}
       <HomeCategoryGrid categories={categories} />

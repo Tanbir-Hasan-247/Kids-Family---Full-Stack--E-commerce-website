@@ -29,7 +29,22 @@ export default function TrackRecipientAndPayment({ activeOrder }) {
           <div className="flex items-start gap-2 pt-1">
             <MapPin className="w-3.5 h-3.5 text-neutral-400 shrink-0 mt-0.5" />
             <span className="text-neutral-600">
-              {activeOrder.address_line}, {activeOrder.city}
+              {(() => {
+                const city = activeOrder.city || '';
+                const isGenericZone =
+                  city.toLowerCase().includes('outside') ||
+                  city.toLowerCase().includes('inside');
+                const isAlreadyInLine =
+                  city &&
+                  activeOrder.address_line
+                    ?.toLowerCase()
+                    .includes(city.toLowerCase());
+
+                if (!city || isGenericZone || isAlreadyInLine) {
+                  return activeOrder.address_line;
+                }
+                return `${activeOrder.address_line}, ${city}`;
+              })()}
             </span>
           </div>
           {activeOrder.notes && (

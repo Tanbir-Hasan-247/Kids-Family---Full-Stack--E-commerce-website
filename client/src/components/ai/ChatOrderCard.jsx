@@ -18,7 +18,15 @@ export default function ChatOrderCard({ order, onNavigate }) {
             {order.order_number}
           </p>
         </div>
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+        <span
+          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            order.status === 'cancelled'
+              ? 'bg-rose-100 text-rose-800'
+              : order.status === 'delivered'
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-amber-100 text-amber-800'
+          }`}
+        >
           {order.status_title}
         </span>
       </div>
