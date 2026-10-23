@@ -1,261 +1,303 @@
-# KIDS&FAMILY E-Commerce Backend REST API
+<div align="center">
 
-A scalable, production-ready Django REST Framework (DRF) backend API for the **KIDS&FAMILY** e-commerce platform.
+# ⚙️ Kids & Family — Backend REST API & AI Engine
 
----
+**High-Performance Django REST Framework Backend with Google Gemini 2.5 Flash AI Assistant, Supabase PostgreSQL & Cloudflare R2**
 
-## 🌟 Features Overview
+[![Django 6](https://img.shields.io/badge/Django-6.1+-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![DRF](https://img.shields.io/badge/Django_REST_Framework-3.18+-red?style=for-the-badge&logo=django&logoColor=white)](https://www.django-rest-framework.org/)
+[![Google Gemini AI](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL_:6543-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Cloudflare R2](https://img.shields.io/badge/Cloudflare-R2_S3_Storage-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/r2/)
+[![Swagger](https://img.shields.io/badge/Swagger-OpenAPI_3.0-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](http://127.0.0.1:8000/api/docs/)
 
-- **Authentication & User Management**:
-  - Email-based authentication with **JWT (JSON Web Tokens)** via `SimpleJWT`.
-  - User registration, login, token refresh, profile update, and password change.
-  - User dashboard metrics (orders, pending items, wishlist counter).
-- **Categories**:
-  - Hierarchical tree structure (Parent categories and subcategories).
-  - Product count per category.
-- **Products & Variants**:
-  - Multi-attribute variants (Color, Size, Custom Attributes).
-  - SKU generation, inventory tracking, compare-at pricing (sale discount percentage).
-  - Search by title, category, description, and price range.
-  - Sorting: Price ascending/descending, newest arrivals.
-  - Filterable by multiple category slugs simultaneously.
-  - On-sale products endpoint (`/api/products/sale/`).
-- **Shopping Bag / Cart**:
-  - Dual support for **Authenticated Customers** and **Guest Users** (via `X-Session-Key` header).
-  - Quantity increment/decrement, inventory stock capping.
-  - Guest cart merging into user cart upon login.
-- **Wishlist / Favorites**:
-  - Instant heart toggle for products.
-  - Status checking per product.
-- **Order Management & Checkout**:
-  - Atomic transaction checkout with inventory auto-decrement.
-  - Unique order number generation (`KF<YYMMDD><RAND>`).
-  - Order tracking, detail views, and payment stub simulation.
-  - Staff / Admin order list with status updates (`pending`, `confirmed`, `processing`, `shipped`, `delivered`, `cancelled`).
-- **Promotions & Banners**:
-  - Scheduled promotional banners (active dates, CTA text, deep links).
-  - Live banners filter for homepage hero carousel.
-- **Admin Dashboard Analytics**:
-  - Revenue calculation (today revenue, total revenue).
-  - 14-day daily sales history array for charts.
-  - Top 5 best-selling products by quantity.
-  - Real-time pending orders notification counter.
-- **Interactive API Documentation**:
-  - **Swagger UI**: `/api/docs/`
-  - **ReDoc**: `/api/redoc/`
-  - **OpenAPI Schema**: `/api/schema/`
+</div>
 
 ---
 
-## 🚀 Getting Started
-
-### 1. Requirements & Setup
-Make sure you have Python 3.10+ installed.
-
-```bash
-# Navigate to the backend folder
-cd "c:\Users\Tanbir Hasan\Desktop\KIDS&FAMILY Backend"
-
-# Create a virtual environment (optional if using .kidenv)
-python -m venv venv
-venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Start the API Server
-```bash
-python manage.py runserver 8000
-```
-The API is now running at `http://127.0.0.1:8000/api/`!  
-Visit the interactive Swagger UI at: `http://127.0.0.1:8000/api/docs/`
+## 📌 Table of Contents
+1. [Architecture & Design Philosophy](#-architecture--design-philosophy)
+2. [Apps & Domain Models](#-apps--domain-models)
+3. [🤖 AI Assistant & NLP Architecture](#-ai-assistant--nlp-architecture)
+4. [Database & Connection Pooling](#-database--connection-pooling)
+5. [Cloudflare R2 Object Storage](#-cloudflare-r2-object-storage)
+6. [Complete REST API Reference](#-complete-rest-api-reference)
+7. [Local Development Setup](#-local-development-setup)
+8. [Production Deployment (Vercel)](#-production-deployment-vercel)
 
 ---
 
-## 🔑 Authentication Guide
+## 🏛️ Architecture & Design Philosophy
 
-For protected endpoints, include the JWT access token in the `Authorization` header:
+The **Kids & Family Backend** is designed around domain-driven Django apps, ensuring clean separation of concerns, high concurrency safety, and zero-latency AI responses:
 
-```http
-Authorization: Bearer <your_access_token>
-```
-
-For **Guest Users** (Cart & Wishlist without logging in), include:
-```http
-X-Session-Key: <unique_guest_uuid_or_string>
+```text
+backend/
+├── backend/                  # Project configuration, settings, WSGI/ASGI handlers
+├── apps/
+│   ├── accounts/             # JWT, User profiles, RBAC, Google OAuth 2.0
+│   ├── ai_assistant/         # Gemini 2.5 AI, Bangla NLP, Tracking & Modifications
+│   ├── categories/           # Parent/child hierarchical trees
+│   ├── products/             # Multi-attribute variants, SKU, Price & Sale
+│   ├── cart/                 # Dual user/guest carts with atomic merging
+│   ├── wishlist/             # Instant favorite toggles & queries
+│   ├── orders/               # Atomic checkout, inventory locks & tracking
+│   ├── promotions/           # Homepage hero carousel banner management
+│   └── dashboard/            # Business intelligence & analytics
+├── media/                    # Local media (synced to Cloudflare R2 in production)
+├── staticfiles/              # WhiteNoise compressed static assets
+├── manage.py                 # Django management CLI
+├── requirements.txt          # Python dependencies
+└── vercel.json               # Serverless Python WSGI runner spec
 ```
 
 ---
 
-## 📖 Complete API Reference
+## 📦 Apps & Domain Models
+
+### 1. `apps.accounts`
+- **Custom User Model (`User`):** Email-based primary authentication, mobile phone number, customer delivery address, avatar, role permissions (`is_staff`, `is_superuser`).
+- **Google OAuth 2.0:** Secure authorization code exchange with state preservation for dynamic frontend redirections.
+- **JWT (JSON Web Tokens):** Sliding window access token with rotating refresh tokens via `SimpleJWT`.
+
+### 2. `apps.products` & `apps.categories`
+- **Category Tree:** Hierarchical categories (`men`, `women`, `boy`, `girl`, `family-matching`, etc.) with slugged URLs and dynamic product counts.
+- **Multi-Attribute Product Variants:** Flexible architecture where each product has multiple variants (e.g., Color: Navy Blue, Size: 40) with dedicated SKU, stock quantity, and price overrides.
+- **Compare-at Pricing:** Automatic computation of promotional discount percentages.
+
+### 3. `apps.cart`
+- **Dual Session Mechanism:** Works seamlessly for authenticated users and unauthenticated guests using the `X-Session-Key` header.
+- **Smart Cart Merging:** When a guest logs in or registers, their existing session cart items automatically merge into their permanent account.
+
+### 4. `apps.orders`
+- **Atomic Stock Reservation:** High-concurrency checkout wrapped in `transaction.atomic()` with stock validation and inventory deduction to eliminate overselling.
+- **Tracking ID Generator:** Unique human-friendly IDs in the format `KF<YYMMDD><RAND>` (e.g. `KF2610183381`).
+- **Bangladesh Delivery Zones:** Automatically resolves delivery fees (Inside Dhaka: ৳60, Outside Dhaka: ৳120).
+- **Status Pipeline:** `pending` ➔ `confirmed` ➔ `processing` ➔ `shipped` ➔ `delivered` (or `cancelled`).
+
+---
+
+## 🤖 AI Assistant & NLP Architecture
+
+Located in `apps/ai_assistant/services.py`, this engine powers the conversational shopping experience:
+
+```mermaid
+flowchart TD
+    UserMsg["Customer Message in Bengali / English"] --> Step0["Fast Deterministic Guard"]
+    Step0 -->|Prompt Injection / Off-topic / Out-of-scope| FastReply["Instant Guard Response (0ms)"]
+    Step0 --> Step1["Shopping Preemption Guard"]
+    Step1 -->|Product browsing (frock, panjabi, size, price)| StepRec["Intelligent Recommender + Gemini AI"]
+    Step1 -->|Modification inquiry| StepMod["Order Modification & Cancellation Engine"]
+    StepMod -->|Valid change (Address / Phone / Cancel)| ModSuccess["Atomic Order Update + Memo"]
+    StepMod -->|Not modifying| StepCart["Conversational Add-to-Cart Engine"]
+    StepCart -->|Add item to cart| CartReply["Cart Drawer Updated"]
+    StepCart --> StepTrack["Order Tracking Detection"]
+    StepTrack -->|Order ID or Phone Provided| TrackLookup["Fetch Live DB Order + Status Card"]
+    StepTrack --> StepRec
+    StepRec --> GeminiCall["Google Gemini 2.5 Flash (google-genai)"]
+    GeminiCall --> FinalResponse["Warm Bengali Reply + Interactive Product Cards"]
+```
+
+### Key Technical Capabilities:
+1. **Bengali Digit Normalization:** Automatically converts Bengali numerals (`০-৯`) to Western digits (`0-9`) for bulletproof order ID and phone matching.
+2. **Shopping Preemption Guard:** When a customer asks about products (e.g., *"বাচ্চা মেয়েদের সুতি ফ্রক দেখান"*), the order modification engine immediately yields, preventing conversational loops.
+3. **Conversational Order Modifications:**
+   - **Delivery Address Update:** Updates order address, recalculates shipping fee (Inside/Outside Dhaka), updates grand total.
+   - **Phone Number Update:** Validates 11-digit Bangladeshi mobile numbers (`013-019`) and updates the courier contact.
+   - **Atomic Cancellation:** Cancels pending orders and immediately restores variant stock quantities.
+4. **1-Click AI Product Description Generator:** Generates professional Bengali/English e-commerce product copy for admins via `/api/ai/generate-description/`.
+
+---
+
+## 🐘 Database & Connection Pooling
+
+### Supabase PostgreSQL Setup
+The application connects to Supabase PostgreSQL using `psycopg3` and `dj-database-url`:
+
+> [!IMPORTANT]
+> **Always use the Transaction Pooler (Port 6543) in production.**
+> Port `5432` is the Direct Session connection limited to 15 concurrent slots. Port `6543` enables PgBouncer transaction-level multiplexing, allowing persistent connections without exhausting the server:
+
+```python
+# backend/settings.py
+if is_transaction_pooler:
+    conn_age = 60  # Keeps TCP and SSL handshake alive across requests
+    # Enables TCP keepalive probes to prevent idle connection termination
+    DATABASES["default"]["OPTIONS"]["keepalives"] = 1
+    DATABASES["default"]["OPTIONS"]["keepalives_idle"] = 30
+```
+
+---
+
+## ☁️ Cloudflare R2 Object Storage
+
+Media assets (product photos, category banners, avatar uploads) are served globally with zero egress fees via **Cloudflare R2**:
+
+- **Driver:** `django-storages[boto3]`
+- **S3 Protocol:** Custom endpoint URL `https://<account_id>.r2.cloudflarestorage.com`
+- **Fallback:** If R2 environment variables are not provided, Django smoothly defaults to local filesystem media storage at `media/`.
+
+---
+
+## 📖 Complete REST API Reference
+
+Interactive documentation is available via:
+- **Swagger UI:** `/api/docs/`
+- **ReDoc:** `/api/redoc/`
+- **OpenAPI 3.0 Schema:** `/api/schema/`
 
 ### 1. Authentication (`/api/auth/`)
-
-| Method | Endpoint | Description | Auth Required |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `POST` | `/api/auth/register/` | Register new account & get tokens | No |
-| `POST` | `/api/auth/login/` | Log in with email & password | No |
-| `POST` | `/api/auth/token/refresh/` | Refresh expired access token | No |
-| `GET` | `/api/auth/profile/` | Get current user profile | Yes |
-| `PATCH` | `/api/auth/profile/` | Update user details (name, phone, address) | Yes |
-| `POST` | `/api/auth/change-password/` | Change password (`old_password`, `new_password`) | Yes |
-| `GET` | `/api/auth/dashboard-summary/` | Customer dashboard metrics & recent orders | Yes |
+| `POST` | `/api/auth/register/` | Register new user & obtain JWT tokens | Public |
+| `POST` | `/api/auth/login/` | Authenticate with email & password | Public |
+| `POST` | `/api/auth/google/` | Google OAuth token handshake & login | Public |
+| `POST` | `/api/auth/token/refresh/` | Refresh expired access token | Public |
+| `GET` | `/api/auth/profile/` | Fetch current authenticated user profile | User |
+| `PATCH` | `/api/auth/profile/` | Update profile information | User |
+| `POST` | `/api/auth/change-password/` | Change account password | User |
+| `GET` | `/api/auth/dashboard-summary/` | Customer summary metrics (orders, pending, wishlist) | User |
 
-#### Sample Login Request:
+### 2. AI Shopping Assistant (`/api/ai/`)
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| `POST` | `/api/ai/chat/` | Conversational shopping, tracking, & modifications | Public |
+| `GET/POST`| `/api/ai/search/` | Semantic natural language product search | Public |
+| `POST` | `/api/ai/generate-description/`| 1-Click AI Product Description generator | Staff |
+
+#### Sample `/api/ai/chat/` Payload:
 ```json
-POST /api/auth/login/
-Content-Type: application/json
-
 {
-  "email": "admin@gmail.com",
-  "password": "yourpassword"
+  "message": "বাচ্চা মেয়েদের সুতি ফ্রক দেখান",
+  "history": [
+    {"role": "user", "text": "আমার অর্ডার ট্র্যাক করতে চাই"},
+    {"role": "model", "text": "আপনার অর্ডারটি ট্র্যাক করতে অনুগ্রহ করে অর্ডার নম্বরটি লিখে জানান।"}
+  ],
+  "session_key": "guest-uuid-1234"
 }
 ```
 
----
-
-### 2. Categories (`/api/categories/`)
-
-| Method | Endpoint | Description | Auth Required |
+### 3. Categories (`/api/categories/`)
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/categories/` | List root categories with nested children | No |
-| `GET` | `/api/categories/?all=true` | Flat list of all categories | No |
-| `POST` | `/api/categories/` | Create a new category | Admin |
-| `GET` | `/api/categories/<slug_or_id>/` | Category details | No |
-| `PATCH` | `/api/categories/<slug_or_id>/` | Update category | Admin |
-| `DELETE` | `/api/categories/<slug_or_id>/` | Delete category | Admin |
+| `GET` | `/api/categories/` | Hierarchical category tree with subcategories | Public |
+| `GET` | `/api/categories/?all=true` | Flat category list | Public |
+| `POST` | `/api/categories/` | Create category | Admin |
+| `GET` | `/api/categories/<slug>/` | Category details | Public |
+| `PATCH` | `/api/categories/<slug>/` | Update category | Admin |
+| `DELETE`| `/api/categories/<slug>/` | Delete category | Admin |
 
----
-
-### 3. Products & Variants (`/api/products/`)
-
-| Method | Endpoint | Description | Auth Required |
+### 4. Products & Variants (`/api/products/`)
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/products/` | Filterable, paginated product list | No |
-| `POST` | `/api/products/` | Create new product | Admin |
-| `GET` | `/api/products/<id>/` | Single product detail with colors & sizes | No |
-| `PATCH` | `/api/products/<id>/` | Update product | Admin |
-| `DELETE` | `/api/products/<id>/` | Delete product | Admin |
-| `GET` | `/api/products/<id>/variant/?color=X&size=Y` | Check variant stock, price & SKU | No |
-| `GET` | `/api/products/sale/` | Products with active discounts | No |
-| `GET` | `/api/products/attributes/types/` | List attribute types (e.g. Color, Size) | No |
-| `GET` | `/api/products/attributes/values/` | List attribute values (?type=Color) | No |
-| `POST` | `/api/products/attributes/values/` | Create attribute value | Admin |
-| `DELETE` | `/api/products/attributes/values/<id>/` | Delete attribute value | Admin |
+| `GET` | `/api/products/` | Filterable, paginated product list | Public |
+| `POST` | `/api/products/` | Create product with variants | Admin |
+| `GET` | `/api/products/<id>/` | Single product detail with swatches & stock | Public |
+| `PATCH` | `/api/products/<id>/` | Update product details | Admin |
+| `DELETE`| `/api/products/<id>/` | Delete product | Admin |
+| `GET` | `/api/products/<id>/variant/?color=X&size=Y` | Check variant SKU, stock, and price | Public |
+| `GET` | `/api/products/sale/` | Products currently on sale | Public |
+| `GET` | `/api/products/attributes/types/` | List attribute types (Color, Size) | Public |
+| `GET` | `/api/products/attributes/values/`| List attribute values | Public |
 
-#### Product Filtering Query Parameters:
-- `cat`: Filter by category slug (e.g. `?cat=boy&cat=men`)
-- `q`: Search keyword across name, description, category
-- `sort`: `price_asc`, `price_desc`, or `newest`
-- `min_price` / `max_price`: Numerical price bounds
-- `featured=true`: Homepage top 8 products
-
----
-
-### 4. Cart (`/api/cart/`)
-
-| Method | Endpoint | Description | Auth Required |
+### 5. Shopping Cart (`/api/cart/`)
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/cart/` | Get current cart, items, total price | Guest or User |
-| `POST` | `/api/cart/add/` | Add variant to cart | Guest or User |
-| `PATCH` | `/api/cart/items/<item_id>/` | Update quantity (`increase`, `decrease`, `set`) | Guest or User |
-| `DELETE` | `/api/cart/items/<item_id>/remove/` | Remove item from cart | Guest or User |
-| `POST` | `/api/cart/clear/` | Clear entire cart | Guest or User |
-| `POST` | `/api/cart/merge/` | Merge guest cart into user cart | Yes |
-
-#### Add to Cart Payload:
-```json
-POST /api/cart/add/
-{
-  "variant_id": 14,
-  "quantity": 1
-}
-```
-
----
-
-### 5. Wishlist (`/api/wishlist/`)
-
-| Method | Endpoint | Description | Auth Required |
-|---|---|---|---|
-| `GET` | `/api/wishlist/` | List favorited products | Guest or User |
-| `POST` | `/api/wishlist/toggle/<product_id>/` | Toggle item in wishlist | Guest or User |
-| `GET` | `/api/wishlist/check/<product_id>/` | Check if product is favorited | Guest or User |
-
----
+| `GET` | `/api/cart/` | Get current cart, line items, and totals | Guest / User |
+| `POST` | `/api/cart/add/` | Add product variant to cart | Guest / User |
+| `PATCH` | `/api/cart/items/<item_id>/` | Update item quantity (`increase`, `decrease`, `set`) | Guest / User |
+| `DELETE`| `/api/cart/items/<item_id>/remove/` | Remove item from cart | Guest / User |
+| `POST` | `/api/cart/clear/` | Empty cart | Guest / User |
+| `POST` | `/api/cart/merge/` | Merge guest cart items into authenticated user cart | User |
 
 ### 6. Orders & Checkout (`/api/orders/`)
-
-| Method | Endpoint | Description | Auth Required |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `POST` | `/api/orders/checkout/` | Place order from cart | Guest or User |
-| `GET` | `/api/orders/` | List user order history | Guest or User |
-| `GET` | `/api/orders/<order_number>/` | Order details & items | Guest or User |
-| `POST` | `/api/orders/<order_number>/pay/` | Payment verification simulation | Guest or User |
-| `GET` | `/api/orders/admin/all/` | Admin all orders list (?status=pending) | Admin |
-| `PATCH` | `/api/orders/admin/<order_number>/` | Admin update status / payment | Admin |
+| `POST` | `/api/orders/checkout/` | Place atomic order from cart | Guest / User |
+| `GET` | `/api/orders/` | List user order history | Guest / User |
+| `GET` | `/api/orders/<order_number>/` | Single order details & item breakdown | Guest / User |
+| `POST` | `/api/orders/<order_number>/pay/` | Payment confirmation stub | Guest / User |
+| `GET` | `/api/orders/admin/all/` | Staff view of all orders (`?status=pending`) | Staff |
+| `PATCH` | `/api/orders/admin/<order_number>/` | Staff update order status & payment state | Staff |
 
-#### Checkout Payload:
-```json
-POST /api/orders/checkout/
-{
-  "full_name": "Tanbir Hasan",
-  "phone": "01700000000",
-  "email": "customer@example.com",
-  "address_line": "House 12, Road 4, Sector 7",
-  "city": "Dhaka",
-  "notes": "Please call before delivery",
-  "payment_method": "cod"
-}
-```
-
----
-
-### 7. Promotions (`/api/promotions/`)
-
-| Method | Endpoint | Description | Auth Required |
+### 7. Wishlist (`/api/wishlist/`)
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/promotions/banners/live/` | Live banners for hero carousel | No |
+| `GET` | `/api/wishlist/` | List favorited products | Guest / User |
+| `POST` | `/api/wishlist/toggle/<product_id>/` | Toggle item in wishlist | Guest / User |
+| `GET` | `/api/wishlist/check/<product_id>/` | Check if product is favorited | Guest / User |
+
+### 8. Promotions (`/api/promotions/`)
+| Method | Endpoint | Description | Auth |
+|---|---|---|---|
+| `GET` | `/api/promotions/banners/live/` | Active hero carousel banners | Public |
 | `GET` | `/api/promotions/banners/` | All banners list | Admin |
-| `POST` | `/api/promotions/banners/` | Create banner | Admin |
+| `POST` | `/api/promotions/banners/` | Create banner with image upload | Admin |
 | `PATCH` | `/api/promotions/banners/<id>/` | Update banner | Admin |
-| `POST` | `/api/promotions/banners/<id>/toggle/` | Toggle active status | Admin |
 
----
-
-### 8. Admin Dashboard Analytics (`/api/dashboard/`)
-
-| Method | Endpoint | Description | Auth Required |
+### 9. Admin Analytics (`/api/dashboard/`)
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/dashboard/stats/` | Revenue, orders, 14-day chart & top products | Admin |
-| `GET` | `/api/dashboard/notifications/count/` | Pending orders notification badge count | Admin |
+| `GET` | `/api/dashboard/stats/` | Revenue, order stats, 14-day sales chart data | Admin |
+| `GET` | `/api/dashboard/notifications/count/` | Live badge count for pending orders | Admin |
 
 ---
 
-## 📁 Project Structure
+## 🛠️ Local Development Setup
 
-```
-KIDS&FAMILY Backend/
-├── backend/
-│   ├── settings.py           # Settings (CORS, JWT, DRF, SQLite, Media)
-│   ├── urls.py               # Root URL router & Swagger docs
-│   ├── wsgi.py
-│   └── asgi.py
-├── apps/
-│   ├── accounts/             # Authentication, JWT, User Profile
-│   ├── categories/           # Categories & Subcategory Trees
-│   ├── products/             # Products, Variants, Attributes & Sale
-│   ├── cart/                 # User & Guest Cart Operations
-│   ├── wishlist/             # Favorites & Wishlist Toggle
-│   ├── orders/               # Checkout, Inventory & Order Management
-│   ├── promotions/           # Promo Banners & Scheduling
-│   └── dashboard/            # Admin Analytics & Notifications
-├── media/                    # Product images & variant assets
-├── db.sqlite3                # Pre-populated SQLite database
-├── manage.py                 # Django CLI management script
-├── requirements.txt          # Python dependencies
-├── .env.example              # Environment variables template
-└── README.md                 # Complete documentation
-```
+1. **Create and activate a virtual environment:**
+   ```bash
+   python -m venv .kidenv
+   # Windows PowerShell:
+   .\.kidenv\Scripts\Activate.ps1
+   # macOS/Linux:
+   source .kidenv/bin/activate
+   ```
 
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure your `.env` file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Apply migrations:**
+   ```bash
+   python manage.py migrate
+   ```
+
+5. **Start server:**
+   ```bash
+   python manage.py runserver 8000
+   ```
+
+---
+
+## 🚀 Production Deployment (Vercel)
+
+The backend is configured for serverless execution using Vercel's Python WSGI runtime:
+
+1. **`build.sh`:** Collects static files and installs dependencies automatically:
+   ```bash
+   python -m pip install -r requirements.txt
+   python manage.py collectstatic --noinput
+   ```
+2. **`vercel.json`:** Directs all incoming traffic to `backend/wsgi.py`:
+   ```json
+   {
+     "version": 2,
+     "builds": [
+       {
+         "src": "backend/wsgi.py",
+         "use": "@vercel/python",
+         "config": { "maxLambdaSize": "15mb", "runtime": "python3.12" }
+       }
+     ],
+     "routes": [
+       { "src": "/(.*)", "dest": "backend/wsgi.py" }
+     ]
+   }
+   ```
