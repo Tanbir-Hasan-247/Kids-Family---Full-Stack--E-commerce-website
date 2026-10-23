@@ -795,7 +795,17 @@ def extract_order_entities(message: str, history: list = None, user=None):
     lower = clean_msg.lower()
 
     # 1. Order Intent Cues & Exclusions
-    is_tracking_inquiry = any(w in lower for w in [
+    # Check if recent assistant turn was prompting for tracking information
+    prev_was_tracking_prompt = False
+    if history and isinstance(history, list):
+        for turn in reversed(history[-2:]):
+            if turn.get("role") in ["model", "assistant"]:
+                t_t = turn.get("text", "")
+                if any(tw in t_t for tw in ["ট্র্যাক করতে", "ট্র্যাকিং", "track", "অর্ডার নম্বরটি"]):
+                    prev_was_tracking_prompt = True
+                    break
+
+    is_tracking_inquiry = prev_was_tracking_prompt or any(w in lower for w in [
         "where is", "kothay", "কোথায়", "track", "ট্র্যাক", "status", "স্ট্যাটাস",
         "khobor", "খবর", "mone nai", "মনে নাই", "harie", "lost", "check order", "kf-", "kf2",
         "order dekhao", "অর্ডার দেখাও", "order dekhi", "অর্ডার দেখি"
@@ -845,14 +855,17 @@ def extract_order_entities(message: str, history: list = None, user=None):
         ("nite chai" in lower or "নিতে চাই" in lower) and not ("delivery" in lower or "ডেলিভারি" in lower)
     )
 
+    has_browsing_cue = any(bk in lower for bk in [
+        "দেখান", "দেখাও", "dekhao", "dekhan", "dekhte", "দেখতে", "কালেকশন", "collection", "ক্যাটালগ", "catalog", "ছবি", "pic", "photo", "দাম কত", "price koto", "সাইজ কত", "size koto"
+    ])
+
     # Multi-turn history check: Did the user or assistant initiate an order in recent turns?
     has_history_order_intent = False
-    if history and isinstance(history, list):
+    if history and isinstance(history, list) and not has_browsing_cue:
         for turn in reversed(history[-4:]):
             t_text = (turn.get("text") or "").lower()
             if any(p in t_text for p in explicit_buy_phrases) or any(w in t_text for w in [
-                "অর্ডারটি কনফার্ম করতে", "অর্ডার প্লেস করতে", "অর্ডারের জন্য", "প্রয়োজনীয় তথ্যগুলো",
-                "সরাসরি চ্যাটে অর্ডার", "১১ ডিজিটের সচল মোবাইল নম্বর"
+                "অর্ডারটি কনফার্ম করতে নিচের প্রয়োজনীয় তথ্যগুলো", "অর্ডার প্লেস করতে আপনার নাম", "সরাসরি চ্যাটে অর্ডার কনফার্ম করতে"
             ]):
                 has_history_order_intent = True
                 break
@@ -1076,8 +1089,9 @@ def extract_order_entities(message: str, history: list = None, user=None):
                 break
 
     has_full_contact_order = bool((phone and (address or name)) or (name and address))
+    has_partial_contact = bool(phone or address or (name and len(clean_msg.split()) <= 4))
     wants_to_order = (
-        (has_explicit_order_phrase or has_full_contact_order or has_history_order_intent)
+        (has_explicit_order_phrase or has_full_contact_order or (has_history_order_intent and has_partial_contact and not has_browsing_cue))
         and not is_excluded
     )
 
@@ -1637,9 +1651,9 @@ def find_order_from_context(message: str, history: list = None, session_key: str
     """
     Finds active order from current message, conversation history, user account, or session.
     Enables natural context memory for multi-turn conversations like:
-    Turn 1: "KF2610183381 order track koro"
-    Turn 2: "ami eitar address change korte chai" (eitar -> KF2610183381)
-    Turn 3: "mirpur 10, dhaka" (answering the address prompt for KF2610183381)
+    Turn 1: "KF2400000000 order track koro"
+    Turn 2: "ami eitar address change korte chai" (eitar -> KF2400000000)
+    Turn 3: "mirpur 10, dhaka" (answering the address prompt for KF2400000000)
     """
     clean_msg = normalize_bengali_digits((message or "").strip())
 
@@ -1663,26 +1677,34 @@ def find_order_from_context(message: str, history: list = None, session_key: str
         if order:
             return order
 
-    # 3. Check conversation history for Order Number (most recent first)
+    # 3. Check conversation history for Order Number (most recent first, USER turns ONLY)
     if history and isinstance(history, list):
         for turn in reversed(history[-8:]):
+            if turn.get("role") not in ["user", "human"]:
+                continue
             text = normalize_bengali_digits(turn.get("text", "") or "")
             m_hist_id = re.search(r"\b(KF[- ]?\d{4,14})\b", text, re.IGNORECASE)
             if m_hist_id:
                 clean_no = re.sub(r"[- ]", "", m_hist_id.group(1)).upper()
+                if "000000" in clean_no or "123456" in clean_no:
+                    continue
                 order = Order.objects.filter(
                     Q(order_number__iexact=m_hist_id.group(1)) | Q(order_number__iexact=clean_no)
                 ).first()
                 if order:
                     return order
 
-    # 4. Check Phone in history
+    # 4. Check Phone in history (USER turns ONLY)
     if history and isinstance(history, list):
         for turn in reversed(history[-8:]):
+            if turn.get("role") not in ["user", "human"]:
+                continue
             text = normalize_bengali_digits(turn.get("text", "") or "")
             m_hist_phone = re.search(r"(?:(?:\+?880|88)?0?)(1[3-9]\d{8})\b", text)
             if m_hist_phone:
                 p11 = f"0{m_hist_phone.group(1)}"
+                if p11 in ["01700000000", "01800000000", "01900000000", "01300000000"]:
+                    continue
                 order = Order.objects.filter(
                     Q(phone=p11) | Q(phone=f"+88{p11}") | Q(phone=f"88{p11}")
                 ).order_by("-created_at").first()
@@ -1742,8 +1764,23 @@ def extract_new_address(message: str, was_prompted: bool = False) -> str | None:
 
     # Pattern 4: If previous turn explicitly asked for address, check if message is the address
     if was_prompted:
+        # Never treat a shopping or product inquiry as an address!
+        if any(w in clean_msg.lower() for w in [
+            "ফ্রক", "frock", "পাঞ্জাবি", "panjabi", "punjabi", "শাড়ি", "saree", "shari",
+            "শার্ট", "shirt", "পোশাক", "ড্রেস", "dress", "কালেকশন", "দেখান", "দেখাও",
+            "kinte", "কিনতে", "দাম", "কত", "সাইজ", "size", "cart"
+        ]):
+            return None
         addr = clean_address_text(clean_msg)
-        if len(addr) >= 3 and not any(w in addr.lower() for w in ["cancel", "বাতিল", "phone", "ফোন", "korte chai"]):
+        has_area_indicator = any(d.lower() in addr.lower() for d in BD_DISTRICTS) or any(
+            w in addr.lower() for w in [
+                "road", "house", "sector", "lane", "পোস্ট", "গ্রাম", "থানা", "জেলা", "রোড", "বাসা", "তলা", "ফ্ল্যাট",
+                "মিরপুর", "উত্তরা", "ধানমন্ডি", "গুলশান", "বনানী", "মোহাম্মদপুর", "মতিঝিল", "যাত্রাবাড়ী", "বাড্ডা", "মালিবাগ",
+                "dhaka", "ctg", "chittagong", "sylhet", "khulna", "rajshahi", "barisal", "rangpur", "mymensingh", "cumilla",
+                "ঢাকা", "চট্টগ্রাম", "সিলেট", "খুলনা", "রাজশাহী", "বরিশাল", "রংপুর", "ময়মনসিংহ", "কুমিল্লা"
+            ]
+        )
+        if has_area_indicator and len(addr) >= 4 and not any(w in addr.lower() for w in ["cancel", "বাতিল", "phone", "ফোন", "korte chai"]):
             return addr
 
     # Pattern 5: Direct address detection if message contains known district or street terms followed by "add koro" / "dao"
@@ -1793,6 +1830,37 @@ def process_order_modification(
     if any(k in lower for k in ["cart e", "কার্টে", "carte", "bag e", "ব্যাগে", "add to cart", "cart a"]):
         return None
 
+    # Guard: Shopping / Product Search / Browsing Intent Pre-empts Order Modification!
+    # If the user is asking to see clothes/products (frock, panjabi, saree, shirts, collections, prices, sizes, etc.)
+    # or greetings/thanks, NEVER intercept as an order modification.
+    has_product_inquiry = any(pk in lower for pk in [
+        "ফ্রক", "frock", "পাঞ্জাবি", "panjabi", "punjabi", "শাড়ি", "saree", "shari",
+        "শার্ট", "shirt", "টি-শার্ট", "t-shirt", "tshirt", "পোশাক", "ড্রেস", "dress",
+        "কালেকশন", "collection", "baby", "বাচ্চা", "বাচ্চাদের", "মেয়েদের", "ছেলেদের",
+        "বাবার", "মায়ের", "বাবা", "মা", "ছেলে", "মেয়ে", "kids", "men", "women", "boy", "girl",
+        "কম্বো", "combo", "সুতি", "cotton", "লুঙ্গি", "কুর্তি", "kurti", "পায়জামা",
+        "পাজামা", "payjama", "pajama", "বোরকা", "হিজাব", "থ্রি পিস", "থ্রিপিস",
+        "three piece", "জুতা", "shoe", "জুতো", "জামা", "কাপড়", "কাপড়"
+    ])
+    has_shopping_action = any(sk in lower for sk in [
+        "দেখান", "দেখাও", "dekhao", "dekhan", "kinte", "কিনতে", "achhe", "ache", "ase",
+        "আছে", "দাম", "price", "dam", "size", "সাইজ", "কত", "koto", "পণ্য", "product",
+        "অফার", "offer", "discount", "ডিসকাউন্ট", "ক্যাটালগ", "catalog", "dekhte", "দেখতে"
+    ])
+    has_conversation_greeting = any(gk in lower for gk in [
+        "hi", "hello", "হাই", "হ্যালো", "সালাম", "assalamualaikum", "ধন্যবাদ", "thanks", "thank you"
+    ])
+
+    has_explicit_cancel_kw = any(ck in lower for ck in [
+        "cancel", "বাতিল", "drop order", "delete order", "অর্ডার বাতিল", "বাতিল করো",
+        "বাতিল করুন", "cancel koro", "cancel korun", "cancel korte chai", "বাতিল করতে চাই",
+        "order ta cancel", "অর্ডারটি বাতিল"
+    ])
+    has_explicit_change_order = any(w in lower for w in ["order", "অর্ডার", "parsel", "পার্সেল"]) and any(w in lower for w in ["change", "পরিবর্তন", "বদল", "update"])
+
+    if (has_product_inquiry or has_shopping_action or has_conversation_greeting) and not (has_explicit_cancel_kw or has_explicit_change_order):
+        return None
+
     if not ctx:
         ctx = get_store_context()
 
@@ -1805,25 +1873,46 @@ def process_order_modification(
         for turn in reversed(history[-2:]):
             if turn.get("role") in ["model", "assistant"]:
                 t_text = turn.get("text", "")
+
+                # Exclude tracking prompts from modification prompts!
+                is_tracking_msg = any(tw in t_text for tw in [
+                    "ট্র্যাক করতে", "ট্র্যাকিং", "track", "খোঁজার জন্য", "tracking"
+                ])
+                if is_tracking_msg:
+                    continue
+
                 is_addr_prompt = (
-                    ("ঠিকানা" in t_text or "address" in t_text.lower())
+                    ("নতুন ডেলিভারি ঠিকানা" in t_text or "ঠিকানা পরিবর্তন" in t_text or "নতুন ঠিকানাটি" in t_text or "ঠিকানার জন্য" in t_text)
                     and "সফলভাবে" not in t_text
-                    and any(ph in t_text for ph in ["লিখে জানান", "জানান", "নতুন"])
                 )
                 is_phone_prompt = (
-                    ("মোবাইল" in t_text or "ফোন" in t_text or "phone" in t_text.lower() or "number" in t_text.lower())
+                    ("নতুন ১১ ডিজিটের মোবাইল নম্বর" in t_text or "নতুন মোবাইল নম্বর" in t_text or "মোবাইল নম্বর পরিবর্তন" in t_text or "নতুন নম্বরটি" in t_text or "ফোন নম্বর পরিবর্তন" in t_text)
                     and "সফলভাবে" not in t_text
-                    and any(ph in t_text for ph in ["লিখে জানান", "জানান", "নতুন"])
                 )
                 if is_addr_prompt or is_phone_prompt:
                     m_ord = re.search(r"\b(KF[- ]?\d{4,14})\b", t_text, re.IGNORECASE)
                     if m_ord:
-                        prompted_order_number = re.sub(r"[- ]", "", m_ord.group(1)).upper()
+                        cand_no = re.sub(r"[- ]", "", m_ord.group(1)).upper()
+                        if "000000" not in cand_no and "123456" not in cand_no:
+                            prompted_order_number = cand_no
                     if is_addr_prompt:
                         was_address_prompted = True
                     if is_phone_prompt:
                         was_phone_prompted = True
                     break
+
+    # Validate prompted state against current user message
+    if was_phone_prompted:
+        has_digits = bool(re.search(r"\d{3,}", clean_msg))
+        has_phone_words = bool(re.search(r"\b(phone|mobile|number|ফোন|মোবাইল|নম্বর)\b", lower))
+        if not (has_digits or has_phone_words):
+            was_phone_prompted = False
+
+    if was_address_prompted:
+        has_addr_words = bool(re.search(r"\b(address|thikana|ঠিকানা|বাসা|রোড|রোডে|এলাকা|জেলা|গ্রাম|থানা)\b", lower))
+        has_district = any(d.lower() in lower for d in BD_DISTRICTS)
+        if not (has_addr_words or has_district):
+            was_address_prompted = False
 
     # 2. Check Action Cues
     # Guard: Policy inquiry about cancellation is NOT an order cancellation command!
@@ -1905,7 +1994,7 @@ def process_order_modification(
             "success": True,
             "reply": (
                 "অবশ্যই! আপনার কোন অর্ডারের তথ্য পরিবর্তন বা বাতিল করতে চান? 📦\n\n"
-                "অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2610183381)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের মোবাইল নম্বরটি** লিখে জানান।"
+                "অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2400000000)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের মোবাইল নম্বরটি** লিখে জানান।"
             ),
             "products": [],
             "order": None,
@@ -2986,7 +3075,7 @@ def detect_deterministic_intent_and_reply(
     ):
         return {
             "success": True,
-            "reply": "আপনার অর্ডারটি ট্র্যাক করতে অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2610183381)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের সচল মোবাইল নম্বরটি** লিখে জানান। 📦",
+            "reply": "আপনার অর্ডারটি ট্র্যাক করতে অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2400000000)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের সচল মোবাইল নম্বরটি** লিখে জানান। 📦",
             "products": [],
             "order": None,
             "intent": "tracking_missing_id",
@@ -3496,7 +3585,7 @@ def detect_deterministic_intent_and_reply(
     if ("cancel korbo na" in lower or "বাতিল করব না" in lower) and any(w in lower for w in ["thikana", "ঠিকানা", "dhanmondi", "ধানমন্ডি"]):
         return {
             "success": True,
-            "reply": "আপনার অর্ডারটি বাতিল করা হবে না। ডেলিভারি ঠিকানা ধানমন্ডি-তে পরিবর্তন করার জন্য অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2610183381)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের মোবাইল নম্বরটি** লিখে জানান। আমরা দ্রুত ঠিকানা পরিবর্তন করে দেব!",
+            "reply": "আপনার অর্ডারটি বাতিল করা হবে না। ডেলিভারি ঠিকানা ধানমন্ডি-তে পরিবর্তন করার জন্য অনুগ্রহ করে আপনার **অর্ডার নম্বরটি (যেমন: KF2400000000)** অথবা অর্ডারে ব্যবহৃত **১১ ডিজিটের মোবাইল নম্বরটি** লিখে জানান। আমরা দ্রুত ঠিকানা পরিবর্তন করে দেব!",
             "products": [],
             "order": None,
             "intent": "order_address_prompt",
@@ -3536,7 +3625,7 @@ def detect_deterministic_intent_and_reply(
     if re.search(r"\bkf\d{1,5}\b", lower) and any(w in lower for w in ["mirpur", "মিরপুর"]):
         return {
             "success": True,
-            "reply": "আপনার অর্ডারটি যাচাই করতে অনুগ্রহ করে সম্পূর্ণ KF অর্ডার নম্বরটি (যেমন: KF2610183381) অথবা অর্ডারের ১১ ডিজিটের মোবাইল নম্বরটি দিন, যাতে মিরপুরের সঠিক গন্তব্য নিশ্চিত করা যায়।",
+            "reply": "আপনার অর্ডারটি যাচাই করতে অনুগ্রহ করে সম্পূর্ণ KF অর্ডার নম্বরটি (যেমন: KF2400000000) অথবা অর্ডারের ১১ ডিজিটের মোবাইল নম্বরটি দিন, যাতে মিরপুরের সঠিক গন্তব্য নিশ্চিত করা যায়।",
             "products": [],
             "order": None,
             "intent": "tracking_partial_id_query",
@@ -4303,9 +4392,25 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
 
     matched_order_query = None
     if order_id_match:
-        matched_order_query = order_id_match.group(1).upper()
-    elif phone_match and any(w in lower for w in ["order", "track", "status", "পার্সেল", "অর্ডার", "কোথায়", "ডেলিভারি", "খবর"]):
-        matched_order_query = phone_match.group(0)
+        cand_id = order_id_match.group(1).upper()
+        if "000000" not in cand_id and "123456" not in cand_id:
+            matched_order_query = cand_id
+    elif phone_match:
+        prev_is_tracking_prompt = False
+        if history and isinstance(history, list):
+            for turn in reversed(history[-2:]):
+                if turn.get("role") in ["model", "assistant"]:
+                    t_text = turn.get("text", "")
+                    if any(tw in t_text for tw in ["ট্র্যাক করতে", "ট্র্যাকিং", "track", "অর্ডার নম্বরটি"]):
+                        prev_is_tracking_prompt = True
+                        break
+        is_tracking_intent = (
+            any(w in lower for w in ["order", "track", "status", "পার্সেল", "অর্ডার", "কোথায়", "ডেলিভারি", "খবর"])
+            or prev_is_tracking_prompt
+            or bool(re.fullmatch(r"(?:(?:\+?880|88)?0?)(1[3-9]\d{8})", message_clean.strip()))
+        )
+        if is_tracking_intent:
+            matched_order_query = phone_match.group(0)
 
     # Multi-turn context memory: If user asks about order status using relative words like "eitar", "order ta", etc.
     if not matched_order_query and any(w in lower for w in [
@@ -4328,8 +4433,11 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
 
     # 4. Product Search & Recommendation via intelligent multi-target recommender
     has_product_query_intent = any(w in lower for w in [
-        "product", "collection", "dekhao", "দেখাও", "panjabi", "পাঞ্জাবি", "frock", "ফ্রক",
-        "shirt", "শার্ট", "saree", "শাড়ি", "kurti", "কুর্তি", "dress", "ড্রেস", "kinte", "কিনতে"
+        "product", "collection", "dekhao", "দেখাও", "dekhan", "দেখান",
+        "panjabi", "পাঞ্জাবি", "punjabi", "frock", "ফ্রক", "shirt", "শার্ট",
+        "saree", "শাড়ি", "shari", "kurti", "কুর্তি", "dress", "ড্রেস", "পোশাক",
+        "জামা", "কাপড়", "কাপড়", "kinte", "কিনতে", "কালেকশন", "ম্যাচিং", "matching",
+        "baby", "বাচ্চা", "মেয়েদের", "ছেলেদের", "কম্বো", "combo"
     ])
     matched_products = (
         find_recommended_products(message_clean, history=history, limit=4)

@@ -48,7 +48,13 @@ export const formatImageUrl = (url) => {
 
 export const getGoogleLoginUrl = () => {
   const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-  return apiBase ? `${apiBase}/accounts/google/login/` : '/accounts/google/login/';
+  const base = apiBase ? `${apiBase}/accounts/google/login/` : '/accounts/google/login/';
+  const currentOrigin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+  if (currentOrigin) {
+    const separator = base.includes('?') ? '&' : '?';
+    return `${base}${separator}frontend_url=${encodeURIComponent(currentOrigin)}`;
+  }
+  return base;
 };
 
 const api = axios.create({

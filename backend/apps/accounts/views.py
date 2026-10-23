@@ -1,4 +1,6 @@
 import urllib.parse
+import json
+import base64
 import requests
 from django.conf import settings
 from django.http import HttpResponseRedirect
@@ -157,8 +159,26 @@ class GoogleOAuthRedirectAPIView(APIView):
             scheme = "https" if request.is_secure() else "http"
             redirect_uri = f"{scheme}://{host}/accounts/google/login/callback/"
 
-        # Send redirect_uri inside state so the callback knows the exact URI used
-        state = urllib.parse.quote(redirect_uri)
+        # Determine frontend origin to redirect back to after Google login:
+        # Priority:
+        # 1. ?frontend_url= query parameter (sent by frontend dynamically based on window.location.origin)
+        # 2. Referer header (if browser sent it)
+        # 3. settings.FRONTEND_URL fallback
+        frontend_origin = request.GET.get("frontend_url")
+        if not frontend_origin:
+            referer = request.META.get("HTTP_REFERER", "")
+            if referer:
+                parsed_ref = urllib.parse.urlparse(referer)
+                frontend_origin = f"{parsed_ref.scheme}://{parsed_ref.netloc}"
+        if not frontend_origin:
+            frontend_origin = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+
+        # Send both redirect_uri and frontend_origin inside state
+        state_data = {
+            "r": redirect_uri,
+            "f": frontend_origin.rstrip("/"),
+        }
+        state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
 
         params = {
             "client_id": client_id,
@@ -185,7 +205,23 @@ class GoogleOAuthCallbackAPIView(APIView):
         code = request.GET.get("code")
         error = request.GET.get("error")
         state = request.GET.get("state")
-        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+
+        frontend_url = None
+        redirect_uri = None
+
+        if state:
+            try:
+                state_data = json.loads(base64.urlsafe_b64decode(state.encode()).decode())
+                redirect_uri = state_data.get("r")
+                frontend_url = state_data.get("f")
+            except Exception:
+                try:
+                    redirect_uri = urllib.parse.unquote(state)
+                except Exception:
+                    pass
+
+        if not frontend_url:
+            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
         if error or not code:
             err_msg = error or "google_auth_cancelled"
@@ -194,10 +230,8 @@ class GoogleOAuthCallbackAPIView(APIView):
         client_id = getattr(settings, "GOOGLE_CLIENT_ID", "")
         client_secret = getattr(settings, "GOOGLE_CLIENT_SECRET", "")
 
-        # Use the exact redirect_uri sent during the authorize step
-        if state:
-            redirect_uri = urllib.parse.unquote(state)
-        else:
+        # Fallback redirect_uri if not in state
+        if not redirect_uri:
             configured_uri = getattr(settings, "GOOGLE_REDIRECT_URI", "")
             backend_url = getattr(settings, "BACKEND_URL", "").rstrip("/")
             if configured_uri:
