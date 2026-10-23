@@ -34,7 +34,19 @@ else:
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
+        "https://kids-family-backend-one.vercel.app",
     ]
+    frontend_url_env = os.environ.get("FRONTEND_URL")
+    if frontend_url_env and frontend_url_env not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(frontend_url_env.strip())
+    backend_url_env = os.environ.get("BACKEND_URL")
+    if backend_url_env and backend_url_env not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(backend_url_env.strip())
+    vercel_url_env = os.environ.get("VERCEL_URL")
+    if vercel_url_env:
+        v_url = f"https://{vercel_url_env.strip()}"
+        if v_url not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(v_url)
 
 AUTH_USER_MODEL = "Account.User"
 
