@@ -39,6 +39,8 @@ class CategorySerializer(serializers.ModelSerializer):
         return attrs
 
     def get_product_count(self, obj):
+        if hasattr(obj, "child_prod_count") and hasattr(obj, "direct_prod_count"):
+            return obj.child_prod_count + obj.direct_prod_count
         from django.db.models import Q
         from apps.products.models import Product
         return Product.objects.filter(Q(category=obj) | Q(category__parent=obj), is_active=True).count()

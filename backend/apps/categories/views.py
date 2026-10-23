@@ -1,6 +1,6 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Count, Q
 from .models import Category
 from .serializers import CategorySerializer
 
@@ -20,10 +20,14 @@ class CategoryListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         show_all = self.request.query_params.get("all", "false").lower() == "true"
+        base_qs = Category.objects.annotate(
+            child_prod_count=Count("children__product", filter=Q(children__product__is_active=True), distinct=True),
+            direct_prod_count=Count("product", filter=Q(product__is_active=True), distinct=True),
+        )
         if show_all:
-            return Category.objects.all().select_related("parent").prefetch_related("children").order_by("name")
+            return base_qs.select_related("parent").prefetch_related("children").order_by("name")
         return (
-            Category.objects.filter(parent__isnull=True)
+            base_qs.filter(parent__isnull=True)
             .select_related("parent")
             .prefetch_related("children__parent")
             .order_by("id")
@@ -35,7 +39,10 @@ class CategoryDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     Retrieve, update, or delete a category by slug or pk.
     """
     serializer_class = CategorySerializer
-    queryset = Category.objects.all().select_related("parent").prefetch_related("children")
+    queryset = Category.objects.all().select_related("parent").prefetch_related("children").annotate(
+        child_prod_count=Count("children__product", filter=Q(children__product__is_active=True), distinct=True),
+        direct_prod_count=Count("product", filter=Q(product__is_active=True), distinct=True),
+    )
 
     def get_permissions(self):
         if self.request.method in ["PUT", "PATCH", "DELETE"]:

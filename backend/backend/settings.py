@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "drf_spectacular",
+    "storages",
     # Custom Domain Apps
     "apps.accounts",
     "apps.categories",
@@ -67,6 +68,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -96,13 +98,60 @@ WSGI_APPLICATION = "backend.wsgi.application"
 ASGI_APPLICATION = "backend.asgi.application"
 
 # Database Configuration
-# Uses db.sqlite3 in project root (pre-populated with existing categories, products, variants, and users)
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+# Supports remote PostgreSQL (e.g. Supabase) via DATABASE_URL or local SQLite fallback
+import dj_database_url
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    is_supabase = "supabase" in DATABASE_URL
+    is_transaction_pooler = ":6543" in DATABASE_URL
+    # Port 6543 (Transaction Pooler): Multiplexes queries so Django can keep TCP/SSL alive (conn_max_age=60)
+    # without hogging Postgres server slots, eliminating the ~1.9s cold handshake penalty on every request.
+    # Port 5432 (Session Pooler): Strictly limited to pool_size 15, so connections must close immediately (conn_max_age=0).
+    if is_transaction_pooler:
+        conn_age = 60
+    elif is_supabase:
+        conn_age = 0
+    else:
+        conn_age = 600
+    db_config = dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=conn_age,
+        conn_health_checks=True,
+    )
+    if db_config.get("ENGINE") == "django.db.backends.postgresql":
+        if is_supabase or is_transaction_pooler:
+            db_config["DISABLE_SERVER_SIDE_CURSORS"] = True
+            db_config.setdefault("OPTIONS", {})
+            db_config["OPTIONS"]["prepare_threshold"] = None
+        db_config.setdefault("OPTIONS", {})
+        db_config["OPTIONS"]["sslmode"] = "require"
+        db_config["OPTIONS"]["connect_timeout"] = 30
+        db_config["OPTIONS"]["keepalives"] = 1
+        db_config["OPTIONS"]["keepalives_idle"] = 30
+        db_config["OPTIONS"]["keepalives_interval"] = 10
+        db_config["OPTIONS"]["keepalives_count"] = 5
+
+        # Supabase pooler hangs if client_encoding is sent in startup packet
+        from django.db.backends.postgresql.base import DatabaseWrapper as PostgresDatabaseWrapper
+        if not hasattr(PostgresDatabaseWrapper, "_supabase_patched"):
+            _orig_get_connection_params = PostgresDatabaseWrapper.get_connection_params
+
+            def _supabase_safe_get_connection_params(self):
+                params = _orig_get_connection_params(self)
+                params.pop("client_encoding", None)
+                return params
+
+            PostgresDatabaseWrapper.get_connection_params = _supabase_safe_get_connection_params
+            PostgresDatabaseWrapper._supabase_patched = True
+    DATABASES = {"default": db_config}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -130,8 +179,53 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Cloudflare R2 Object Storage Configuration
+USE_CLOUDFLARE_R2 = bool(
+    os.environ.get("CLOUDFLARE_R2_ACCESS_KEY_ID")
+    and os.environ.get("CLOUDFLARE_R2_BUCKET_NAME")
+)
+
+if USE_CLOUDFLARE_R2:
+    AWS_ACCESS_KEY_ID = os.environ.get("CLOUDFLARE_R2_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("CLOUDFLARE_R2_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("CLOUDFLARE_R2_BUCKET_NAME")
+    AWS_S3_ENDPOINT_URL = os.environ.get("CLOUDFLARE_R2_ENDPOINT_URL")
+    AWS_S3_REGION_NAME = "auto"
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_DEFAULT_ACL = None
+    AWS_S3_FILE_OVERWRITE = False
+
+    r2_public_domain = os.environ.get("CLOUDFLARE_R2_PUBLIC_URL", "").strip()
+    if r2_public_domain:
+        clean_domain = r2_public_domain.replace("https://", "").replace("http://", "").rstrip("/")
+        AWS_S3_CUSTOM_DOMAIN = clean_domain
+        AWS_QUERYSTRING_AUTH = False
+        MEDIA_URL = f"https://{clean_domain}/"
+    else:
+        AWS_QUERYSTRING_AUTH = True
+        AWS_QUERYSTRING_EXPIRE = 604800  # 7 days for signed URLs
+        MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+else:
+    MEDIA_URL = "/media/"
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
