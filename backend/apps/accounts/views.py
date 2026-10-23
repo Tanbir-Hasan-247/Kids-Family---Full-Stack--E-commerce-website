@@ -143,12 +143,15 @@ class GoogleOAuthRedirectAPIView(APIView):
     def get(self, request):
         client_id = getattr(settings, "GOOGLE_CLIENT_ID", "")
         configured_uri = getattr(settings, "GOOGLE_REDIRECT_URI", "")
+        backend_url = getattr(settings, "BACKEND_URL", "").rstrip("/")
         query_uri = request.GET.get("redirect_uri")
 
         if query_uri:
             redirect_uri = query_uri
         elif configured_uri:
             redirect_uri = configured_uri
+        elif backend_url and ("vercel.app" in backend_url or "https://" in backend_url or "onrender.com" in backend_url):
+            redirect_uri = f"{backend_url}/accounts/google/login/callback/"
         else:
             host = request.get_host()
             scheme = "https" if request.is_secure() else "http"
@@ -196,8 +199,11 @@ class GoogleOAuthCallbackAPIView(APIView):
             redirect_uri = urllib.parse.unquote(state)
         else:
             configured_uri = getattr(settings, "GOOGLE_REDIRECT_URI", "")
+            backend_url = getattr(settings, "BACKEND_URL", "").rstrip("/")
             if configured_uri:
                 redirect_uri = configured_uri
+            elif backend_url and ("vercel.app" in backend_url or "https://" in backend_url or "onrender.com" in backend_url):
+                redirect_uri = f"{backend_url}/accounts/google/login/callback/"
             else:
                 host = request.get_host()
                 scheme = "https" if request.is_secure() else "http"

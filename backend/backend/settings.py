@@ -18,6 +18,9 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
 
+# Reverse proxy SSL header (Vercel, Render, Cloudflare HTTPS)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Allowed Hosts from environment (e.g. ALLOWED_HOSTS=yourdomain.com,api.yourdomain.com)
 allowed_hosts_env = os.environ.get("ALLOWED_HOSTS")
 if allowed_hosts_env:

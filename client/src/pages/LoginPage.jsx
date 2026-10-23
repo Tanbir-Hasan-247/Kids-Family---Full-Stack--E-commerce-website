@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { LogIn, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getGoogleLoginUrl } from '../api/axios';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -136,7 +137,7 @@ const LoginPage = () => {
 
         <div>
           <a
-            href="/accounts/google/login/"
+            href={getGoogleLoginUrl()}
             className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-neutral-300 rounded-xl shadow-xs bg-white text-xs font-semibold text-neutral-700 hover:bg-neutral-50 hover:border-neutral-400 transition cursor-pointer"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">

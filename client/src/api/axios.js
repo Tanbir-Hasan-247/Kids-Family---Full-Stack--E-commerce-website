@@ -46,6 +46,11 @@ export const formatImageUrl = (url) => {
   return mediaBase ? `${mediaBase}${rel}` : rel;
 };
 
+export const getGoogleLoginUrl = () => {
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+  return apiBase ? `${apiBase}/accounts/google/login/` : '/accounts/google/login/';
+};
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
