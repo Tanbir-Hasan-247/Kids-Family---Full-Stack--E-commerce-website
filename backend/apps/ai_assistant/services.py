@@ -18,8 +18,16 @@ def get_store_context():
     """
     Fetches real-time shop configuration and category catalogue
     to ground Gemini in actual shop data.
+    Safely falls back to defaults if DB is temporarily unreachable.
     """
-    setting = ShopSetting.objects.first()
+    setting = None
+    categories = []
+    try:
+        setting = ShopSetting.objects.first()
+        categories = list(Category.objects.values_list("name", flat=True)[:15])
+    except Exception as e:
+        logger.warning(f"Could not load ShopSetting from DB: {e}")
+
     shop_name = setting.shop_name if setting else "Kids & Family"
     inside_dhaka = float(setting.delivery_inside_dhaka) if setting else 60.0
     outside_dhaka = float(setting.delivery_outside_dhaka) if setting else 120.0
@@ -27,8 +35,6 @@ def get_store_context():
     whatsapp = setting.whatsapp_number if setting else phone
     address = setting.address if setting else "Dhaka, Bangladesh"
     hours = setting.opening_hours if setting else "10 AM - 8 PM"
-
-    categories = list(Category.objects.values_list("name", flat=True)[:15])
 
     context = {
         "shop_name": shop_name,
@@ -38,7 +44,7 @@ def get_store_context():
         "whatsapp": whatsapp,
         "address": address,
         "hours": hours,
-        "categories": ", ".join(categories),
+        "categories": ", ".join(categories) if categories else "Boys, Girls, Kids, Men, Women, Panjabi, Kurti, Frock",
     }
     return context
 
@@ -633,15 +639,19 @@ def clean_address_text(text: str) -> str:
         for pat in leading_patterns:
             clean = re.sub(pat, "", clean, flags=re.IGNORECASE).strip()
 
-    # 2. Remove trailing conversational command phrases and polite suffixes
+    # 2. Remove trailing conversational command phrases, cart words, and polite suffixes
     trailing_patterns = [
+        r"\s*(?:cart\s*er\s*order\s*confirm\s*kore\s*dew|cart\s*er\s*order\s*confirm\s*kore\s*dao|cart\s*er\s*order\s*confirm\s*kore\s*din|cart\s*er\s*order\s*confirm|cart\s*er\s*order)\s*$",
+        r"\s*(?:order\s*confirm\s*kore\s*dew|order\s*confirm\s*kore\s*dao|order\s*confirm\s*kore\s*din|order\s*confirm\s*koro|order\s*confirm\s*korun|অর্ডার\s*কনফার্ম\s*করে\s*দাও|অর্ডার\s*কনফার্ম\s*করে\s*দেন|অর্ডার\s*কনফার্ম\s*করে\s*দিন|অর্ডার\s*কনফার্ম\s*করুন|অর্ডার\s*কনফার্ম\s*করো|অর্ডার\s*কনফার্ম)\s*$",
+        r"\s*(?:order\s*kore\s*dew|order\s*kore\s*dao|order\s*kore\s*din|order\s*koro|order\s*korun|অর্ডার\s*করে\s*দাও|অর্ডার\s*করে\s*দেন|অর্ডার\s*করে\s*দিন|অর্ডার\s*করুন|অর্ডার\s*করো)\s*$",
+        r"\s*(?:cart\s*er|cart\s*theke|cart|কার্টের|কার্ট\s*থেকে|কার্ট|bag|ব্যাগ)\s*$",
         r"\s*(?:add\s*kore\s*dao|add\s*kore\s*den|add\s*kore\s*din|add\s*koro|add\s*korun|add\s*kor|এড\s*করো|এড\s*করুন|এড\s*কর|যোগ\s*করো|যোগ\s*করুন)\s*$",
         r"\s*(?:change\s*kore\s*dao|change\s*kore\s*din|change\s*koro|change\s*korun|পরিবর্তন\s*করে\s*দাও|পরিবর্তন\s*করুন|পরিবর্তন\s*করো)\s*$",
         r"\s*(?:set\s*kore\s*dao|set\s*kore\s*din|set\s*koro|set\s*korun|আপডেট\s*করো|আপডেট\s*করুন)\s*$",
-        r"\s*(?:kore\s*dao|kore\s*den|kore\s*din|kore\s*diyen|করে\s*দাও|করে\s*দিন|করে\s*দিয়েন|করে\s*রাখুন)\s*$",
+        r"\s*(?:kore\s*dao|kore\s*den|kore\s*din|kore\s*diyen|kore\s*dew|করে\s*দাও|করে\s*দিন|করে\s*দিয়েন|করে\s*রাখুন)\s*$",
         r"\s*(?:delivery\s*diyen|delivery\s*dio|delivery\s*den|delivery\s*dao|ডেলিভারি\s*দিয়েন|ডেলিভারি\s*দিন|ডেলিভারি\s*দাও)\s*$",
         r"\s*(?:pathan|pathiye\s*din|pathiye\s*dao|পাঠান|পাঠিয়ে\s*দিন|পাঠিয়ে\s*দাও)\s*$",
-        r"\s*(?:rakhun|dao|den|din|দিবেন|দাও|দিন|করুন|করো|রাখুন|হবে|দিয়েন|diyen|চাই|chai)\s*$",
+        r"\s*(?:rakhun|dao|den|din|dew|দিবেন|দাও|দিন|দেন|করুন|করো|রাখুন|হবে|দিয়েন|diyen|চাই|chai)\s*$",
         r"\s*(?:thikana\s*ta|thikana|ঠিকানা\s*টা|ঠিকানা|address\s*ta|address|লোকেশন)\s*$",
         r"\s*(?:please|plz|bhai|vai|apu|ভাই|আপু|ধন্যবাদ|thanks)\s*$",
     ]
@@ -845,11 +855,17 @@ def extract_order_entities(message: str, history: list = None, user=None):
     explicit_buy_phrases = [
         "order koro", "order korun", "order korte chai", "order dite chai",
         "order place koro", "place order", "place an order", "buy now", "order now",
+        "order confirm", "order confirm koro", "order confirm korun", "order confirm kore dew",
+        "order confirm kore dao", "order confirm kore din", "confirm order",
+        "order kore dew", "order kore dao", "order kore din",
         "অর্ডার করতে চাই", "অর্ডার দিতে চাই", "অর্ডার করব", "অর্ডার দিন",
-        "অর্ডার করে দিন", "অর্ডার কনফার্ম করুন", "বুক করুন", "অর্ডার পাঠান",
+        "অর্ডার করে দিন", "অর্ডার করে দাও", "অর্ডার করে দেন", "অর্ডার কনফার্ম করুন",
+        "অর্ডার কনফার্ম করো", "অর্ডার কনফার্ম করে দাও", "অর্ডার কনফার্ম করে দেন", "অর্ডার কনফার্ম করে দিন", "অর্ডার কনফার্ম",
+        "কনফার্ম করে দাও", "কনফার্ম করে দিন", "কনফার্ম করুন", "বুক করুন", "অর্ডার পাঠান",
+        "cart er order", "cart order", "কার্টের অর্ডার", "কার্ট অর্ডার", "checkout", "চেকআউট",
         "kinte chai", "কিনতে চাই",
         "pathiye din", "পাঠিয়ে দিন", "পাঠিয়ে দেন", "cash on delivery te pathan",
-        "ক্যাশ অন ডেলিভারিতে পাঠান"
+        "ক্যাশ অন ডেলিভারিতে পাঠান", "ক্যাশ অন ডেলিভারি"
     ]
     has_explicit_order_phrase = any(p in lower for p in explicit_buy_phrases) or (
         ("nite chai" in lower or "নিতে চাই" in lower) and not ("delivery" in lower or "ডেলিভারি" in lower)
@@ -931,13 +947,20 @@ def extract_order_entities(message: str, history: list = None, user=None):
             cand_addr = re.sub(r"(?:size|সাইজ)\s*[:=–-]?\s*[a-zA-Z0-9-]+", "", cand_addr, flags=re.IGNORECASE).strip(" ,;:\n\r-")
             cand_addr = re.sub(r"\b(?:XXL|XL|L|M|S|XS|38|40|42|44|46)\b", "", cand_addr, flags=re.IGNORECASE).strip(" ,;:\n\r-")
             cand_addr = re.sub(
-                r"(?:^|[\s,;.-])(?:panjabi|punjabi|পাঞ্জাবি|পাঞ্জাবী|kurta|কুর্তা|frock|ফ্রক|shirt|শার্ট|tshirt|t-shirt|টি-শার্ট|টিশার্ট|পোলো|polo|kurti|কুর্তি|saree|shari|শাড়ি|dress|ড্রেস|কাফতান|kaftan).*$",
+                r"\b(?:cart\s*er\s*order|cart\s*order|কার্টের\s*অর্ডার|cart|কার্ট|bag|ব্যাগ|order\s*confirm|অর্ডার\s*কনফার্ম|confirm|কনফার্ম|checkout|চেকআউট|order|অর্ডার|kore\s*dew|kore\s*dao|kore\s*din|koro|korun|করে\s*দাও|করে\s*দেন|করে\s*দিন|করো|করুন|pathan|পাঠান|দাও|দিন|চাই|chai)\b.*$",
                 "",
                 cand_addr,
                 flags=re.IGNORECASE,
             ).strip(" ,;:\n\r-")
-            if len(cand_addr) >= 4:
-                address = cand_addr
+            cand_addr = re.sub(
+                r"\b(?:panjabi|punjabi|পাঞ্জাবি|পাঞ্জাবী|kurta|কুর্তা|frock|ফ্রক|shirt|শার্ট|tshirt|t-shirt|টি-শার্ট|টিশার্ট|পোলো|polo|kurti|কুর্তি|saree|shari|শাড়ি|dress|ড্রেস|কাফতান|kaftan)\b.*$",
+                "",
+                cand_addr,
+                flags=re.IGNORECASE,
+            ).strip(" ,;:\n\r-")
+            cleaned_a = clean_address_text(cand_addr)
+            if len(cleaned_a) >= 3:
+                address = cleaned_a
 
         # Handle case where phone was first: "01307802117 Tanbir Hasan, noddapara, uttara, dhaka"
         if not name and not prefix and suffix:
@@ -945,10 +968,10 @@ def extract_order_entities(message: str, history: list = None, user=None):
             if parts and len(parts) >= 2:
                 if len(parts[0]) <= 35 and not any(ch.isdigit() for ch in parts[0]):
                     name = parts[0]
-                    address = ", ".join(parts[1:])
+                    address = clean_address_text(", ".join(parts[1:]))
 
     # 5.1 If phone is absent, detect Name + Address from area keywords (e.g. "Tanbir Hasan Mirpur 10, Dhaka")
-    if not address or not name:
+    if not phone and (not address or not name):
         area_words = ["mirpur", "uttara", "dhanmondi", "gulshan", "banani", "mohammadpur", "khilgaon", "badda", "motijheel", "মিরপুর", "উত্তরা", "ধানমন্ডি", "গুলশান", "বাসা", "রোড", "road", "house", "sector", "lane"] + [d.lower() for d in BD_DISTRICTS]
         earliest_idx = None
         for aw in area_words:
@@ -986,9 +1009,9 @@ def extract_order_entities(message: str, history: list = None, user=None):
 
     # 6. Entity Carryover from Recent History (if missing in current message)
     if history and isinstance(history, list):
-        for turn in reversed(history[-4:]):
+        for turn in reversed(history[-6:]):
             if turn.get("role") in ["user", "human"]:
-                prev_text = normalize_bengali_digits(turn.get("text", ""))
+                prev_text = normalize_bengali_digits(turn.get("text", "")).strip()
                 if not phone:
                     prev_p_m = re.search(r"(?:(?:\+?880|88)?0?)(1[3-9]\d{8})\b", prev_text)
                     if prev_p_m:
@@ -1003,6 +1026,35 @@ def extract_order_entities(message: str, history: list = None, user=None):
                             name = prev_pre
                         if not address and len(prev_suf) >= 4:
                             address = prev_suf
+
+                # 6.1 If name is still missing, check explicit name patterns in previous user turns
+                if not name:
+                    for pat in name_patterns:
+                        m = re.search(pat, prev_text, re.IGNORECASE)
+                        if m:
+                            cand_n = m.group(1).strip()
+                            if len(cand_n) >= 2 and not any(ch.isdigit() for ch in cand_n):
+                                name = cand_n
+                                break
+
+                # 6.2 If name is still missing, check if previous user turn was simply a standalone name (e.g. "Hasan Mahmud")
+                if not name:
+                    tokens = prev_text.split()
+                    if 1 <= len(tokens) <= 4 and not any(ch.isdigit() for ch in prev_text):
+                        cand_name = re.sub(r"^(?:amar|amr|my|আমার)?\s*(?:nam|name|নাম)?\s*[:=–-]?", "", prev_text, flags=re.IGNORECASE).strip()
+                        greetings_ignore = [
+                            "hi", "hello", "hey", "assalamualaikum", "সালাম", "ভাই", "vai", "bhai",
+                            "start", "cart", "order", "help", "kemon achen", "kemon asen", "কেমন আছেন", "yes", "no", "haa", "na"
+                        ]
+                        if cand_name and cand_name.lower() not in greetings_ignore and len(cand_name) >= 2:
+                            name = cand_name
+
+            elif turn.get("role") in ["model", "assistant"] and not name:
+                # 6.3 If the assistant greeted the customer by name previously e.g. "আসসালামু আলাইকুম, হাসান মাহমুদ ভাই!"
+                a_text = turn.get("text", "")
+                m_greet = re.search(r"আসসালামু আলাইকুম,?\s+([a-zA-Z\u0980-\u09FF\s.]{2,30}?)\s+(?:ভাই|আপু|ভায়া|সাহেব)", a_text)
+                if m_greet:
+                    name = m_greet.group(1).strip()
 
     # 7. Size Extraction
     size = None
@@ -1095,20 +1147,11 @@ def extract_order_entities(message: str, history: list = None, user=None):
         and not is_excluded
     )
 
-    # City deduction
+    # City deduction via comprehensive 64-district matcher
     city = None
     if address:
-        addr_low = address.lower()
-        if any(w in addr_low for w in ["dhaka", "ঢাকা", "mirpur", "uttara", "dhanmondi", "gulshan", "banani", "motijheel", "badda", "mohammadpur", "khilgaon"]):
-            city = "Dhaka"
-        elif any(w in addr_low for w in ["chittagong", "চট্টগ্রাম", "ctg"]):
-            city = "Chittagong"
-        elif any(w in addr_low for w in ["sylhet", "সিলেট"]):
-            city = "Sylhet"
-        elif any(w in addr_low for w in ["rajshahi", "রাজশাহী"]):
-            city = "Rajshahi"
-        elif any(w in addr_low for w in ["khulna", "খুলনা"]):
-            city = "Khulna"
+        zone_info = resolve_district_and_delivery_zone(address)
+        city = zone_info.get("city")
 
     return {
         "wants_to_order": wants_to_order,
@@ -2291,7 +2334,23 @@ def process_conversational_add_to_cart(
     clean_msg = normalize_bengali_digits(message.strip())
     lower = clean_msg.lower()
 
-    # Guard: If customer is talking about order modifications (address, phone, cancel, tracking)
+    # Guard 1: If customer is confirming/placing an order or checking out, NEVER treat as add-to-cart!
+    order_confirm_cues = [
+        "order confirm", "confirm order", "order koro", "order korun", "order kore dew",
+        "order kore dao", "order kore din", "order place", "place order", "checkout",
+        "অর্ডার কনফার্ম", "অর্ডার করো", "অর্ডার করুন", "অর্ডার করে দাও", "অর্ডার করে দেন",
+        "অর্ডার দিন", "অর্ডার পাঠান", "cart er order", "cart order", "কার্টের অর্ডার", "কার্ট অর্ডার",
+        "ক্যাশ অন ডেলিভারি", "cash on delivery", "cod", "অর্ডার করতে চাই", "order dite chai",
+        "কিনতে চাই", "kinte chai", "নিতে চাই", "nite chai"
+    ]
+    if any(oc in lower for oc in order_confirm_cues):
+        return None
+
+    # Guard 2: If customer provides an 11-digit mobile phone number, it is checkout information, NEVER add to cart!
+    if re.search(r"(?:(?:\+?880|88)?0?)(1[3-9]\d{8})\b", clean_msg):
+        return None
+
+    # Guard 3: If customer is talking about order modifications (address, phone, cancel, tracking)
     # and has NOT explicitly typed a cart action (like "cart e add", "কার্টে যোগ"), do NOT treat as add-to-cart!
     order_mgmt_words = [
         "address", "thikana", "ঠিকানা", "phone", "ফোন", "mobile", "মোবাইল",
@@ -4364,7 +4423,30 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
     if order_mod_result:
         return order_mod_result
 
-    # 1. Conversational Add-To-Cart (if customer wants to add an item to cart directly)
+    # 1. Prioritize Conversational Order Placement if customer expresses order intent or provides checkout contact details
+    has_phone_for_order = bool(re.search(r"(?:(?:\+?880|88)?0?)(1[3-9]\d{8})\b", message_clean))
+    order_intent_phrases = [
+        "order confirm", "confirm order", "order koro", "order korun", "order kore dew",
+        "order kore dao", "order kore din", "order place", "place order", "checkout",
+        "অর্ডার কনফার্ম", "অর্ডার করো", "অর্ডার করুন", "অর্ডার করে দাও", "অর্ডার করে দেন",
+        "অর্ডার দিন", "অর্ডার পাঠান", "cart er order", "কার্টের অর্ডার", "কার্ট অর্ডার",
+        "ক্যাশ অন ডেলিভারি", "cash on delivery", "cod", "কিনতে চাই", "kinte chai",
+        "নিতে চাই", "nite chai", "buy now"
+    ]
+    has_order_cue = any(op in lower for op in order_intent_phrases)
+
+    if has_order_cue or has_phone_for_order:
+        order_result = process_conversational_order(
+            message=message_clean,
+            history=history,
+            session_key=session_key,
+            user=user,
+            ctx=ctx,
+        )
+        if order_result:
+            return order_result
+
+    # 2. Conversational Add-To-Cart (if customer wants to add an item to cart directly)
     cart_result = process_conversational_add_to_cart(
         message=message_clean,
         history=history,
@@ -4375,16 +4457,17 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
     if cart_result:
         return cart_result
 
-    # 2. Conversational Order Placement
-    order_result = process_conversational_order(
-        message=message_clean,
-        history=history,
-        session_key=session_key,
-        user=user,
-        ctx=ctx,
-    )
-    if order_result:
-        return order_result
+    # 3. Conversational Order Placement (fallback if not matched by order_cue or phone above)
+    if not (has_order_cue or has_phone_for_order):
+        order_result = process_conversational_order(
+            message=message_clean,
+            history=history,
+            session_key=session_key,
+            user=user,
+            ctx=ctx,
+        )
+        if order_result:
+            return order_result
 
     # 3. Order Tracking Detection
     order_id_match = re.search(r"\b(KF[- ]?\d{4,14})\b", message_clean, re.IGNORECASE)
