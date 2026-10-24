@@ -1,3 +1,4 @@
+import re
 """
 Order Operations Tools & Draft State Machine for AI Shopping Agent.
 Safe tracking with dual-key authentication, server-grounded draft preparation,
@@ -123,46 +124,79 @@ def execute_track_order(
 ) -> Dict[str, Any]:
     """
     Secure order tracking with BOLA/IDOR protection.
-    Requires matching phone for guest orders or matching user for authenticated orders.
+    Supports lookup by order number or customer phone number.
+    Auto-detects phone number if passed in order_number parameter.
     """
     clean_order_num = str(order_number or "").strip().upper()
-    if not clean_order_num:
+    raw_phone = str(phone or "").strip()
+
+    # Smart auto-detection: If order_number is actually a BD mobile number
+    clean_digits = re.sub(r"\D", "", clean_order_num)
+    if not raw_phone and len(clean_digits) in (10, 11) and re.match(r"^(?:0)?1[3-9]\d{8}$", clean_digits):
+        raw_phone = clean_digits
+        clean_order_num = ""
+
+    norm_phone = _normalize_phone_number(raw_phone)
+
+    if not clean_order_num and not norm_phone:
         return {
             "success": False,
-            "error": "অর্ডার নাম্বার প্রদান করা আবশ্যক (যেমন: KF2610251234)।",
+            "error": "অনুগ্রহ করে আপনার অর্ডার নম্বর (যেমন: KF2610251234) অথবা ১১ ডিজিটের মোবাইল নম্বর প্রদান করুন।",
         }
 
-    order = Order.objects.filter(order_number=clean_order_num).first()
-    if not order:
-        return {
-            "success": False,
-            "error": f"'{clean_order_num}' নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার নাম্বার দিন।",
-        }
+    order = None
+    if clean_order_num:
+        order = Order.objects.filter(order_number=clean_order_num).first()
+        if not order:
+            return {
+                "success": False,
+                "error": f"'{clean_order_num}' নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক অর্ডার নম্বর দিন।",
+            }
+        is_authorized = False
+        if user and getattr(user, "is_authenticated", False):
+            if user.is_staff or order.user == user:
+                is_authorized = True
 
-    # BOLA / IDOR Verification
-    is_authorized = False
-    if user and getattr(user, "is_authenticated", False):
-        if user.is_staff or order.user == user:
-            is_authorized = True
+        if not is_authorized:
+            # For guest or non-owner: strictly require matching phone number
+            order_norm_phone = _normalize_phone_number(order.phone)
+            if norm_phone and order_norm_phone and norm_phone == order_norm_phone:
+                is_authorized = True
 
-    if not is_authorized:
-        # For guest: strictly require matching phone number
-        norm_phone = _normalize_phone_number(phone)
-        order_norm_phone = _normalize_phone_number(order.phone)
-        if norm_phone and order_norm_phone and norm_phone == order_norm_phone:
-            is_authorized = True
-
-    if not is_authorized:
-        return {
-            "success": False,
-            "error": "নিরাপত্তাজনিত কারণে অর্ডার ট্র্যাকিংয়ের জন্য অর্ডারে ব্যবহৃত সঠিক ফোন নাম্বার প্রদান করা প্রয়োজন।",
-        }
+        if not is_authorized:
+            return {
+                "success": False,
+                "error": "নিরাপত্তাজনিত কারণে অর্ডার ট্র্যাক করতে অর্ডারের সময় ব্যবহৃত সঠিক ফোন নাম্বার প্রদান করা আবশ্যক।",
+            }
+    elif norm_phone:
+        from django.db.models import Q
+        matching_orders = list(
+            Order.objects.filter(
+                Q(phone=norm_phone) | Q(phone=f"+88{norm_phone}") | Q(phone=f"88{norm_phone}")
+            ).order_by("-created_at")[:6]
+        )
+        if not matching_orders:
+            return {
+                "success": False,
+                "error": f"'{norm_phone}' মোবাইল নম্বরে কোনো অর্ডার খুঁজে পাওয়া যায়নি।",
+            }
+        order = matching_orders[0]
+        multiple_orders_summary = []
+        if len(matching_orders) > 1:
+            for o in matching_orders:
+                multiple_orders_summary.append({
+                    "order_number": o.order_number,
+                    "status": o.status,
+                    "total": float(o.total),
+                    "created_at": o.created_at.strftime("%d %b, %Y") if hasattr(o, "created_at") and o.created_at else "",
+                })
 
     order_card = format_order_card(order)
     return {
         "success": True,
         "order_number": order.order_number,
         "order": order_card,
+        "multiple_orders": multiple_orders_summary if 'multiple_orders_summary' in locals() else [],
         "status": order.status,
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,

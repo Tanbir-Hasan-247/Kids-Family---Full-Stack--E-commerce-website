@@ -97,14 +97,14 @@ def get_agent_tools() -> list:
         ),
         types.FunctionDeclaration(
             name="track_order",
-            description="Track an existing customer order status, delivery progress, and items using order number (e.g. 'KF2610251234') and customer phone number.",
+            description="Track an existing customer order status, delivery progress, and items using order number (e.g. 'KF2610251234') or 11-digit customer phone number (e.g. '01307802117').",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "order_number": types.Schema(type=types.Type.STRING, description="Order identifier e.g. KF2610251234"),
-                    "phone": types.Schema(type=types.Type.STRING, description="11-digit customer phone number used during checkout"),
+                    "order_number": types.Schema(type=types.Type.STRING, description="Order identifier e.g. KF2610251234 (optional if phone is provided)"),
+                    "phone": types.Schema(type=types.Type.STRING, description="11-digit customer phone number used during checkout e.g. 017XXXXXXXX"),
                 },
-                required=["order_number"],
+                required=[],
             ),
         ),
         types.FunctionDeclaration(

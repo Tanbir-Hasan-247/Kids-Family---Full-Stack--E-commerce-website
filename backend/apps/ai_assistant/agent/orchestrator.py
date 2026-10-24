@@ -65,6 +65,13 @@ class AgentOrchestrator:
 
         # 2. Build Store Context & Gemini Client
         store_context = get_verified_shop_settings()
+
+        # 2.1 Fast-Path: Deterministic Store FAQs & Live Order Tracking
+        fast_direct = cls._check_fast_deterministic_path(
+            clean_msg, history=history, user=user, session_key=session_key, store_context=store_context
+        )
+        if fast_direct:
+            return fast_direct
         client = get_gemini_client()
         if not client:
             logger.warning("[Agent Orchestrator] Gemini client unavailable, falling back.")
@@ -102,6 +109,7 @@ class AgentOrchestrator:
             tools=tools,
             system_instruction=system_instruction,
             temperature=0.7,
+            thinking_config=types.ThinkingConfig(thinking_level="minimal"),
         )
 
         models_to_try = [PRIMARY_MODEL] + [m for m in FALLBACK_MODELS if m != PRIMARY_MODEL]
@@ -157,7 +165,7 @@ class AgentOrchestrator:
 
                     # Append tool responses as 'tool' role content
                     loop_contents.append(
-                        types.Content(role="tool", parts=response_parts)
+                        types.Content(role="user", parts=response_parts)
                     )
 
                 # Loop completed without provider exception; break out of model failover
@@ -178,8 +186,10 @@ class AgentOrchestrator:
                 # For transient/configuration errors without side effects, try next model in fallback list
                 continue
 
-        # If model failed or produced empty reply, compose grounded response
+        # If model failed or produced empty reply, fallback to legacy deterministic engine or grounded response
         if not final_reply:
+            if not state.get("products") and not state.get("order") and not state.get("order_draft") and not state.get("order_created"):
+                return cls._fallback_response(clean_msg, history, session_key, user, store_context)
             final_reply = cls._compose_fallback_text(clean_msg, state, store_context)
 
         # Resolve dominant intent for frontend
@@ -273,6 +283,169 @@ class AgentOrchestrator:
             state["intents"].add("store_policy")
 
     @classmethod
+    def _check_fast_deterministic_path(
+        cls,
+        clean_msg: str,
+        history: Optional[List[dict]] = None,
+        user=None,
+        session_key: Optional[str] = None,
+        store_context: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """
+        Sub-millisecond fast-path for:
+        1. Order tracking by 11-digit phone number or order number.
+        2. Authoritative store delivery charges and timelines.
+        3. Standard return & exchange policies.
+        Eliminates network latency, 504 timeouts, and LLM hallucinations.
+        """
+        lower = clean_msg.lower()
+
+        # 1. Order tracking by phone or order ID
+        clean_digits = re.sub(r"\D", "", clean_msg)
+        phone_val = ""
+        if len(clean_digits) in (10, 11) and re.match(r"^(?:0)?1[3-9]\d{8}$", clean_digits):
+            phone_val = clean_digits if len(clean_digits) == 11 else f"0{clean_digits}"
+
+        m_order_id = re.search(r"KF[- ]?\d{4,14}", clean_msg, re.IGNORECASE)
+        order_val = m_order_id.group(0) if m_order_id else ""
+
+        is_pure_num = bool(phone_val or order_val)
+        has_tracking_context = is_pure_num or any(w in lower for w in ["track", "ট্র্যাক", "অর্ডার", "status", "স্ট্যাটাস", "পার্সেল"])
+        if not has_tracking_context and history and isinstance(history, list):
+            for turn in reversed(history[-3:]):
+                t_text = (turn.get("text") or "").lower()
+                if any(w in t_text for w in ["track", "ট্র্যাক", "অর্ডার নম্বর", "order number", "মোবাইল নম্বর", "ফোন নম্বর"]):
+                    has_tracking_context = True
+                    break
+
+        if (phone_val or order_val) and has_tracking_context:
+            from .tools.order_tools import execute_track_order
+
+            track_res = execute_track_order(
+                order_number=order_val,
+                phone=phone_val,
+                user=user,
+                session_key=session_key,
+            )
+            if track_res.get("success") and track_res.get("order"):
+                ord_card = track_res["order"]
+                mult = track_res.get("multiple_orders", [])
+                if mult and len(mult) > 1:
+                    reply = (
+                        f"আপনার মোবাইল নম্বর (`{phone_val}`)-এ মোট **{len(mult)}টি সাম্প্রতিক অর্ডার** পাওয়া গেছে! 📦\n\n"
+                        f"**আপনার সাম্প্রতিক অর্ডারগুলোর তালিকা:**\n"
+                    )
+                    status_bn_map = {
+                        "pending": "পর্যালোচনাধীন",
+                        "confirmed": "কনফার্মড",
+                        "processing": "প্রসেসিং",
+                        "shipped": "শিপড",
+                        "delivered": "ডেলিভার্ড",
+                        "cancelled": "বাতিল",
+                    }
+                    for idx, mo in enumerate(mult, 1):
+                        st_bn = status_bn_map.get(mo["status"], mo["status"])
+                        created_info = f" | তারিখ: {mo['created_at']}" if mo.get('created_at') else ""
+                        reply += f"{idx}. **অর্ডার আইডি: `{mo['order_number']}`**\n"
+                        reply += f"   • স্ট্যাটাস: **{st_bn}**{created_info}\n"
+                        reply += f"   • মোট বিল: ৳{mo['total']:.0f}\n"
+
+                    reply += (
+                        f"\nনিচে আপনার **সর্বশেষ অর্ডারের (`{ord_card.get('order_number')}`)** লাইভ ট্র্যাকিং কার্ড দেওয়া হলো।\n"
+                        f"তালিকার অন্য কোনো নির্দিষ্ট অর্ডার ট্র্যাক করতে চাইলে শুধু সেটির অর্ডার নম্বর (যেমন: `{mult[1]['order_number']}`) লিখে পাঠান।"
+                    )
+                else:
+                    reply = (
+                        f"আপনার অর্ডারটি খুঁজে পাওয়া গেছে! 📦\n\n"
+                        f"• **অর্ডার নম্বর:** `{ord_card.get('order_number')}`\n"
+                        f"• **বর্তমান স্ট্যাটাস:** **{ord_card.get('status_title')}** ({ord_card.get('status_desc')})\n"
+                        f"• **মোট বিল:** ৳{track_res.get('total', 0):.0f} ({'ক্যাশ অন ডেলিভারি' if track_res.get('payment_method') == 'cod' else 'অনলাইন পেমেন্ট'})\n\n"
+                        f"নিচে আপনার অর্ডারের বিস্তারিত কার্ড সংযুক্ত করা হলো।"
+                    )
+                return {
+                    "success": True,
+                    "reply": reply,
+                    "products": [],
+                    "order": ord_card,
+                    "order_created": False,
+                    "cart_updated": False,
+                    "added_product_id": None,
+                    "order_draft": None,
+                    "order_confirmation_requested": False,
+                    "intent": "order_tracking",
+                    "engine": "fast-track-engine",
+                }
+            elif is_pure_num or any(w in lower for w in ["track", "ট্র্যাক"]):
+                target_val = order_val or phone_val
+                return {
+                    "success": True,
+                    "reply": f"দুঃখিত, '{target_val}' দিয়ে আমাদের সিস্টেমে কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক মোবাইল নম্বর বা অর্ডার নম্বর (যেমন: KF2610251234) জানান।",
+                    "products": [],
+                    "order": None,
+                    "order_created": False,
+                    "cart_updated": False,
+                    "added_product_id": None,
+                    "order_draft": None,
+                    "order_confirmation_requested": False,
+                    "intent": "order_not_found",
+                    "engine": "fast-track-engine",
+                }
+
+        # 2. Pure Delivery FAQ
+        store_context = store_context or get_verified_shop_settings()
+        has_delivery_word = any(w in lower for w in ["delivery", "ডেলিভারি", "চার্জ", "charge"])
+        has_timing_word = any(w in lower for w in ["কত", "সময়", "সময়", "koto", "rate", "lagbe", "কবে", "দিন", "din"])
+        has_shopping_word = any(w in lower for w in ["shirt", "panjabi", "dress", "frock", "order", "কিনব", "দেখান", "dekhan", "kinte", "পণ্য", "পোশাক", "item"])
+
+        if has_delivery_word and has_timing_word and not has_shopping_word:
+            inside = float(store_context.get("delivery_inside_dhaka", 60))
+            outside = float(store_context.get("delivery_outside_dhaka", 120))
+            reply = (
+                f"আমাদের ডেলিভারি চার্জ ও সময় সংক্রান্ত তথ্য:\n\n"
+                f"• **ঢাকার ভেতরে:** ডেলিভারি চার্জ ৳{inside:.0f} (সময়: ২৪–৪৮ ঘণ্টা)\n"
+                f"• **ঢাকার বাইরে:** ডেলিভারি চার্জ ৳{outside:.0f} (সময়: ৩–৫ কর্মদিবস)\n\n"
+                f"পেমেন্ট হিসেবে ক্যাশ অন ডেলিভারি (পণ্য হাতে পেয়ে মূল্য পরিশোধ) এবং অনলাইন পেমেন্ট সুবিধা রয়েছে।"
+            )
+            return {
+                "success": True,
+                "reply": reply,
+                "products": [],
+                "order": None,
+                "order_created": False,
+                "cart_updated": False,
+                "added_product_id": None,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "intent": "store_policy",
+                "engine": "fast-faq-engine",
+            }
+
+        # 3. Pure Return & Exchange FAQ
+        has_return_word = any(w in lower for w in ["return", "exchange", "রিটার্ন", "এক্সচেঞ্জ", "বদলা", "পরিবর্তন", "সাইজ না হলে", "size na hole"])
+        if has_return_word and not has_shopping_word:
+            phone = store_context.get("phone", "+880 1700-000000")
+            reply = (
+                f"হ্যাঁ, আমাদের রিটার্ন ও এক্সচেঞ্জ সুবিধা রয়েছে! 🌸\n\n"
+                f"সাইজ না মিললে বা কোনো ত্রুটি থাকলে পণ্যটি গ্রহণের পর অক্ষত ও ট্যাগ লাগানো অবস্থায় এক্সচেঞ্জ করতে পারবেন।\n"
+                f"যেকোনো সহায়তার জন্য আমাদের হেল্পলাইনে সরাসরি যোগাযোগ করতে পারেন: {phone}।"
+            )
+            return {
+                "success": True,
+                "reply": reply,
+                "products": [],
+                "order": None,
+                "order_created": False,
+                "cart_updated": False,
+                "added_product_id": None,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "intent": "store_policy",
+                "engine": "fast-faq-engine",
+            }
+
+        return None
+
+    @classmethod
     def _check_security_fast_guard(cls, message: str) -> Optional[dict]:
         """Fast pre-LLM check to block prompt injections and destructive attacks."""
         lower = message.lower()
@@ -337,6 +510,28 @@ class AgentOrchestrator:
                 f"আপনার অর্ডার নম্বর **{state['order'].get('order_number')}** ট্র্যাক করা হয়েছে। "
                 f"বর্তমান স্ট্যাটাস: **{state['order'].get('status_title')}** ({state['order'].get('status_desc')})।"
             )
+        # Grounded keyword responses for fallback
+        low = (message or "").lower()
+        inside = float(store_context.get("delivery_inside_dhaka", 60))
+        outside = float(store_context.get("delivery_outside_dhaka", 120))
+        phone = store_context.get("phone", "+880 1700-000000")
+
+        if any(w in low for w in ["delivery", "ডেলিভারি", "চার্জ", "charge", "সময়", "সময়", "shomoy", "koto din", "কত দিন", "কত লাগবে"]):
+            return (
+                f"আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৳{inside:.0f} এবং ঢাকার বাইরে ৳{outside:.0f}।\n"
+                f"সাধারণত ঢাকার ভেতরে ২৪-৪৮ ঘণ্টা এবং ঢাকার বাইরে ৩-৫ কার্যদিবসে ডেলিভারি সম্পন্ন হয়।"
+            )
+
+        if any(w in low for w in ["return", "exchange", "রিটার্ন", "এক্সচেঞ্জ", "বদলা", "পরিবর্তন", "সাইজ না হলে"]):
+            return (
+                f"সাইজ বা মানজনিত সমস্যার জন্য পণ্যটি অক্ষত ও ট্যাগ লাগানো অবস্থায় এক্সচেঞ্জ সুবিধা রয়েছে।\n"
+                f"বিস্তারিত প্রক্রিয়া জানতে অনুগ্রহ করে আমাদের হেল্পলাইনে ({phone}) যোগাযোগ করুন।"
+            )
+
+        if any(w in low for w in ["phone", "ফোন", "নাম্বার", "হেল্পলাইন", "যোগাযোগ", "ঠিকানা", "location", "address"]):
+            addr = store_context.get("address", "Dhaka, Bangladesh")
+            return f"আমাদের ঠিকানা: {addr}। প্রয়োজনে সরাসরি যোগাযোগ করুন আমাদের হেল্পলাইনে: {phone}।"
+
         return (
             f"Kids & Family-তে আপনাকে স্বাগতম! 🌸 আমাদের কালেকশন, সাইজ বা ডেলিভারি নিয়ে যেকোনো জিজ্ঞাসা জানাতে পারেন, "
             f"সাহায্য করতে পেরে আনন্দিত হব।"
