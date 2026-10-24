@@ -2,6 +2,7 @@ import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
+from rest_framework.throttling import ScopedRateThrottle
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from apps.categories.models import Category
@@ -21,6 +22,8 @@ class AIChatAPIView(APIView):
     and live order status queries.
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "ai_chat"
 
     @extend_schema(
         summary="AI Shopping Assistant Chat Endpoint",

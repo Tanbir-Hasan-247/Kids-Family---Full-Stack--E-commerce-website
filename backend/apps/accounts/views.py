@@ -7,7 +7,9 @@ from django.http import HttpResponseRedirect
 from rest_framework import generics, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from .models import User
 from .serializers import (
     UserSerializer,
@@ -17,6 +19,25 @@ from .serializers import (
 )
 
 
+def set_refresh_cookie(response, refresh_token):
+    """
+    Sets the refresh token in an HttpOnly, SameSite=Lax cookie.
+    Prevents XSS attacks from accessing or stealing the refresh token.
+    """
+    is_secure = not settings.DEBUG
+    max_age = 14 * 24 * 60 * 60  # 14 days
+    response.set_cookie(
+        key="refresh_token",
+        value=str(refresh_token),
+        max_age=max_age,
+        httponly=True,
+        secure=is_secure,
+        samesite="Lax",
+        path="/",
+    )
+    return response
+
+
 class RegisterAPIView(generics.CreateAPIView):
     """
     Register a new customer account.
@@ -24,6 +45,8 @@ class RegisterAPIView(generics.CreateAPIView):
     """
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -43,8 +66,11 @@ class LoginAPIView(APIView):
     """
     Log in using email and password.
     Returns JWT access & refresh tokens along with user information.
+    Sets HttpOnly refresh token cookie for secure session continuation.
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data)
@@ -52,7 +78,7 @@ class LoginAPIView(APIView):
         validated_data = serializer.validated_data
 
         user = validated_data["user"]
-        return Response(
+        response = Response(
             {
                 "message": "Login successful.",
                 "user": UserSerializer(user).data,
@@ -63,6 +89,8 @@ class LoginAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+        set_refresh_cookie(response, validated_data["refresh"])
+        return response
 
 
 class ProfileAPIView(generics.RetrieveUpdateAPIView):
@@ -299,7 +327,9 @@ class GoogleOAuthCallbackAPIView(APIView):
             refresh_jwt = str(refresh)
 
             redirect_target = f"{frontend_url}/login?google_success=1&access={access_jwt}&refresh={refresh_jwt}"
-            return HttpResponseRedirect(redirect_target)
+            redirect_response = HttpResponseRedirect(redirect_target)
+            set_refresh_cookie(redirect_response, refresh_jwt)
+            return redirect_response
 
         except Exception as e:
             return HttpResponseRedirect(f"{frontend_url}/login?error={urllib.parse.quote(str(e))}")
@@ -310,8 +340,11 @@ class GoogleAuthAPIView(APIView):
     Direct REST API endpoint to authenticate with Google ID token or access token from frontend client.
     Accepts: { "credential": "<id_token>" } or { "access_token": "<token>" }
     Returns: JWT access & refresh tokens along with user information.
+    Sets HttpOnly refresh token cookie.
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def post(self, request):
         credential = request.data.get("credential")
@@ -385,7 +418,7 @@ class GoogleAuthAPIView(APIView):
                 user.save(update_fields=["first_name", "last_name"])
 
             refresh = RefreshToken.for_user(user)
-            return Response(
+            response = Response(
                 {
                     "message": "Google authentication successful.",
                     "user": UserSerializer(user).data,
@@ -396,10 +429,71 @@ class GoogleAuthAPIView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+            set_refresh_cookie(response, str(refresh))
+            return response
         except Exception as e:
             return Response(
                 {"error": f"Failed to authenticate with Google: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class CookieTokenRefreshView(APIView):
+    """
+    Check 14: HttpOnly Cookie Shield.
+    Refreshes access token seamlessly via HttpOnly cookie or payload body.
+    Rotates the refresh token and updates the HttpOnly cookie.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get("refresh_token") or request.data.get("refresh")
+        if not refresh_token:
+            return Response(
+                {"error": "Refresh token is missing from both cookie and payload."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_token})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            err_response = Response(
+                {"error": "Invalid or expired refresh token. Please log in again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            err_response.delete_cookie("refresh_token", path="/")
+            return err_response
+
+        access_token = serializer.validated_data.get("access")
+        new_refresh = serializer.validated_data.get("refresh")
+
+        response = Response(
+            {
+                "access": access_token,
+                "refresh": new_refresh if new_refresh else refresh_token,
+            },
+            status=status.HTTP_200_OK,
+        )
+        if new_refresh:
+            set_refresh_cookie(response, new_refresh)
+        return response
+
+
+class LogoutAPIView(APIView):
+    """
+    Securely log out by wiping the HttpOnly refresh token cookie.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        response = Response(
+            {"message": "Logged out successfully."},
+            status=status.HTTP_200_OK,
+        )
+        response.delete_cookie("refresh_token", path="/")
+        return response
 
 

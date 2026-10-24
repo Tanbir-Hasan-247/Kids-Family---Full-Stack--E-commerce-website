@@ -98,7 +98,12 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout/');
+    } catch (e) {
+      // Ignore network errors on logout
+    }
     localStorage.removeItem('kf_access_token');
     localStorage.removeItem('kf_refresh_token');
     setUser(null);

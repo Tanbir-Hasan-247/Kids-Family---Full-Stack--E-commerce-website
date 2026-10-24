@@ -6,6 +6,11 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // Check 18: Hide .js.map SourceMaps in production builds
+    sourcemap: false,
+    chunkSizeWarningLimit: 1200,
+  },
   server: {
     allowedHosts: true,
     proxy: {

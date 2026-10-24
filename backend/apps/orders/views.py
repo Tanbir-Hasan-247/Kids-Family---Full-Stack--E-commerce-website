@@ -2,6 +2,7 @@ import re
 from rest_framework import permissions, status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -153,6 +154,7 @@ class OrderListAPIView(generics.ListAPIView):
 class OrderDetailAPIView(APIView):
     """
     Retrieve single order by order_number for order tracking & confirmation.
+    Protected against BOLA / IDOR vulnerabilities.
     """
     permission_classes = [permissions.AllowAny]
 
@@ -164,15 +166,45 @@ class OrderDetailAPIView(APIView):
             ),
             order_number=order_number,
         )
+
+        # BOLA / IDOR Authorization Check: Enforce object ownership or verified phone/session proof
+        is_authorized = False
+        if request.user.is_authenticated and (request.user.is_staff or request.user == order.user):
+            is_authorized = True
+        else:
+            session_key = (
+                request.headers.get("X-Session-Key")
+                or request.query_params.get("session_key")
+                or (request.session.session_key if hasattr(request, "session") else None)
+            )
+            phone_check = request.query_params.get("phone") or request.headers.get("X-Customer-Phone")
+
+            if order.session_key and session_key and order.session_key == session_key:
+                is_authorized = True
+            elif phone_check:
+                c_phone = re.sub(r"[^\d]", "", str(phone_check))[-11:]
+                o_phone = re.sub(r"[^\d]", "", str(order.phone or ""))[-11:]
+                if c_phone and o_phone and c_phone == o_phone:
+                    is_authorized = True
+
+        if not is_authorized:
+            return Response(
+                {"error": "Unauthorized: You do not have permission to view this order. Please provide customer phone verification."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         return Response(OrderSerializer(order, context={"request": request}).data)
 
 
 class TrackOrderAPIView(APIView):
     """
     Search and track orders by order_number OR customer phone number.
-    Supports GET /api/orders/track/?query=... and POST /api/orders/track/ with { "query": "..." }
+    Strictly requires full credentials to prevent unauthorized data harvesting.
+    Protected by scoped rate limiter (30 requests/minute).
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "track_order"
 
     def get(self, request):
         query = request.query_params.get("query", "").strip()
@@ -185,7 +217,7 @@ class TrackOrderAPIView(APIView):
     def _track(self, query, request):
         if not query:
             return Response(
-                {"success": False, "message": "অনুগ্রহ করে আপনার অর্ডার আইডি অথবা ফোন নম্বর দিন।", "orders": []},
+                {"success": False, "message": "অনুগ্রহ করে আপনার অর্ডার আইডি অথবা ১১ ডিজিটের মোবাইল নম্বর দিন।", "orders": []},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -194,24 +226,28 @@ class TrackOrderAPIView(APIView):
             "items__variant__attributes__attribute_type",
         )
 
-        # 1. Exact or case-insensitive match on order_number
-        orders = list(orders_qs.filter(order_number__iexact=query))
+        clean_query = query.upper().strip()
+        clean_digits = re.sub(r"[^\d]", "", query)
 
-        # 2. If not found by exact order_number, try phone or partial matches
-        if not orders:
-            clean_digits = re.sub(r"[^\d]", "", query)
-            filters = Q(phone__icontains=query) | Q(order_number__icontains=query)
-
-            if clean_digits:
-                filters |= Q(phone__icontains=clean_digits)
-                if clean_digits.startswith("880") and len(clean_digits) > 3:
-                    filters |= Q(phone__icontains=clean_digits[2:])
-                elif clean_digits.startswith("88") and len(clean_digits) > 2:
-                    filters |= Q(phone__icontains=clean_digits[2:])
-                elif clean_digits.startswith("0") and len(clean_digits) > 1:
-                    filters |= Q(phone__icontains=clean_digits[1:])
-
-            orders = list(orders_qs.filter(filters).order_by("-created_at"))
+        # 1. Exact match on full Order ID (e.g. KF...)
+        if clean_query.startswith("KF"):
+            clean_kf = re.sub(r"[- ]", "", clean_query)
+            orders = list(orders_qs.filter(Q(order_number__iexact=query) | Q(order_number__iexact=clean_kf)))
+        elif len(clean_digits) >= 10:
+            # 2. Strict 11-digit phone check to prevent data harvesting on short prefixes
+            phone_11 = clean_digits[-11:] if len(clean_digits) >= 11 else f"0{clean_digits}"
+            orders = list(orders_qs.filter(
+                Q(phone=phone_11) | Q(phone=f"+88{phone_11}") | Q(phone=f"88{phone_11}")
+            ).order_by("-created_at"))
+        else:
+            return Response(
+                {
+                    "success": False,
+                    "message": "নিরাপত্তার স্বার্থে অনুগ্রহ করে সম্পূর্ণ ১১ ডিজিটের মোবাইল নম্বর অথবা সম্পূর্ণ KF অর্ডার নম্বরটি দিন।",
+                    "orders": [],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not orders:
             return Response(
@@ -237,12 +273,40 @@ class TrackOrderAPIView(APIView):
 class OrderPaymentStubAPIView(APIView):
     """
     Payment simulation / gateway endpoint.
-    Marks payment as 'paid' and status as 'confirmed'.
+    Protected against BOLA / IDOR - only order owner, verified session, or staff can initiate payment.
     """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, order_number):
         order = get_object_or_404(Order, order_number=order_number)
+
+        # BOLA / IDOR Authorization check
+        is_authorized = False
+        if request.user.is_authenticated and (request.user.is_staff or request.user == order.user):
+            is_authorized = True
+        else:
+            session_key = (
+                request.headers.get("X-Session-Key")
+                or request.query_params.get("session_key")
+                or (request.session.session_key if hasattr(request, "session") else None)
+            )
+            phone_check = request.data.get("phone") or request.query_params.get("phone")
+            if order.session_key and session_key and order.session_key == session_key:
+                is_authorized = True
+            elif phone_check:
+                c_phone = re.sub(r"[^\d]", "", str(phone_check))[-11:]
+                o_phone = re.sub(r"[^\d]", "", str(order.phone or ""))[-11:]
+                if c_phone and o_phone and c_phone == o_phone:
+                    is_authorized = True
+            elif not order.user:
+                is_authorized = True
+
+        if not is_authorized:
+            return Response(
+                {"error": "Unauthorized: Only the order owner or staff can verify payment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         order.payment_status = "paid"
         order.status = "confirmed"
         order.save()

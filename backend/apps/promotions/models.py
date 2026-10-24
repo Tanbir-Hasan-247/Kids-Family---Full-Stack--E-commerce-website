@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from apps.common.validators import validate_image_file
 
 
 class PromoBanner(models.Model):
@@ -13,7 +14,7 @@ class PromoBanner(models.Model):
     title = models.CharField(max_length=150)
     badge_text = models.CharField(max_length=20, blank=True)
     subtitle = models.TextField(blank=True)
-    image = models.ImageField(upload_to="banners/", blank=True, null=True)
+    image = models.ImageField(upload_to="banners/", blank=True, null=True, validators=[validate_image_file])
     background_color = models.CharField(
         max_length=10, choices=BACKGROUND_CHOICES, default="pinedeep"
     )
@@ -64,12 +65,14 @@ class HeroSlider(models.Model):
     badge_text = models.CharField(max_length=50, blank=True, help_text="Badge e.g. 'FESTIVE SALE', '40% OFF'")
     image = models.ImageField(
         upload_to="sliders/",
+        validators=[validate_image_file],
         help_text="Desktop banner image (recommended 1920x600 or 1400x550)"
     )
     mobile_image = models.ImageField(
         upload_to="sliders/mobile/",
         blank=True,
         null=True,
+        validators=[validate_image_file],
         help_text="Optional mobile-specific banner (recommended 800x800 or 750x600)"
     )
     link_url = models.CharField(max_length=255, blank=True, default="/products", help_text="Target URL or category path")

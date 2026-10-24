@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from apps.categories.models import Category
+from apps.common.validators import validate_image_file
 
 
 class Product(models.Model):
@@ -90,7 +91,7 @@ class ProductVariant(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True
     )
     stock = models.PositiveIntegerField(default=0)
-    image = models.ImageField(upload_to="variants/", null=True, blank=True)
+    image = models.ImageField(upload_to="variants/", null=True, blank=True, validators=[validate_image_file])
 
     class Meta:
         db_table = "Product_productvariant"
@@ -125,7 +126,7 @@ class ProductReview(models.Model):
     user_name = models.CharField(max_length=150)
     rating = models.PositiveSmallIntegerField(default=5)  # 1 to 5 stars
     comment = models.TextField()
-    image = models.ImageField(upload_to="reviews/", null=True, blank=True)
+    image = models.ImageField(upload_to="reviews/", null=True, blank=True, validators=[validate_image_file])
     created_at = models.DateTimeField(auto_now_add=True)
     is_approved = models.BooleanField(default=True)
 
