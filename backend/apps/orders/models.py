@@ -54,6 +54,21 @@ class Order(models.Model):
         default="",
         help_text="Reason or note for cancellation if order is cancelled",
     )
+    idempotency_key = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Unique idempotency key preventing duplicate order placement under race conditions.",
+    )
+    guest_token_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="HMAC hash of the guest ownership token bound to this order.",
+    )
 
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     shipping_fee = models.DecimalField(max_digits=8, decimal_places=2, default=60)

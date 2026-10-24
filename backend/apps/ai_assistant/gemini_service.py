@@ -7,9 +7,9 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Primary recommended models with high throughput and instant availability
-PRIMARY_MODEL = "gemini-3.5-flash-lite"
-FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.8-flash"]
+# Primary recommended current stable models verified live against Google Gemini API
+PRIMARY_MODEL = "gemini-3.8-flash"
+FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
 FALLBACK_STATIC_KEY = "AQ.Ab8RN6JuaZXRPt50-DQ0peN6K384diJ-Z-VOvRTZIkdI4bwfiA"
 
 
@@ -52,7 +52,7 @@ def get_gemini_client():
 
     try:
         from google import genai
-        return genai.Client(api_key=api_key)
+        return genai.Client(api_key=api_key, http_options={"api_version": "v1alpha"})
     except Exception as e:
         logger.error(f"Failed to initialize Google GenAI Client: {e}")
         return None

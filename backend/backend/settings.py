@@ -18,6 +18,26 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
 
+# Production Secret Validation
+INSECURE_DEFAULT_SECRET_KEYS = {
+    "django-insecure-kids-family-backend-api-secret-key-production-ready-2026",
+    "changeme",
+    "secret",
+}
+
+if not DEBUG:
+    if (
+        not SECRET_KEY
+        or SECRET_KEY in INSECURE_DEFAULT_SECRET_KEYS
+        or SECRET_KEY.startswith("django-insecure-")
+        or len(SECRET_KEY) < 32
+    ):
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "CRITICAL: A secure, high-entropy DJANGO_SECRET_KEY environment variable (minimum 32 characters) "
+            "must be configured when running with DEBUG=False in production."
+        )
+
 # Reverse proxy SSL header (Vercel, Render, Cloudflare HTTPS)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -83,14 +103,22 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+]
+
+try:
+    import whitenoise  # noqa: F401
+    MIDDLEWARE.append("whitenoise.middleware.WhiteNoiseMiddleware")
+except ImportError:
+    pass
+
+MIDDLEWARE.extend([
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-]
+])
 
 ROOT_URLCONF = "backend.urls"
 
@@ -337,11 +365,16 @@ LOGGING = {
             "format": "[{asctime}] {levelname} [{name}:{lineno}] {message}",
             "style": "{",
         },
+        "pii_safe": {
+            "()": "apps.common.logging_formatter.PIISafeFormatter",
+            "format": "[{asctime}] {levelname} [{name}:{lineno}] {message}",
+            "style": "{",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "formatter": "pii_safe",
         },
     },
     "root": {

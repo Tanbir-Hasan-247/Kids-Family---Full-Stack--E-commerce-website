@@ -1,4 +1,3 @@
-import uuid
 from rest_framework import permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,35 +9,16 @@ from .serializers import (
     AddToCartSerializer,
     UpdateCartItemSerializer,
 )
+from .services import resolve_cart, merge_guest_cart_into_user_cart
 from apps.products.models import ProductVariant
 
 
 def get_or_create_cart(request):
     """
-    Finds or creates a cart for authenticated user or guest.
-    Guest identification order:
-    1. Header: X-Session-Key
-    2. Query param: ?session_key=...
-    3. Django session key
-    4. Auto-generated UUID key
+    Backward-compatible entry point delegating to resolve_cart().
+    Returns (cart, token_to_return).
     """
-    if request.user.is_authenticated:
-        cart, _ = Cart.objects.get_or_create(user=request.user)
-        return cart, None
-
-    session_key = (
-        request.headers.get("X-Session-Key")
-        or request.query_params.get("session_key")
-        or request.session.session_key
-    )
-
-    is_new_session = False
-    if not session_key:
-        session_key = str(uuid.uuid4())[:32]
-        is_new_session = True
-
-    cart, _ = Cart.objects.get_or_create(session_key=session_key, user=None)
-    return cart, session_key if is_new_session else None
+    return resolve_cart(request)
 
 
 def load_cart_optimized(cart_id):
@@ -51,18 +31,18 @@ def load_cart_optimized(cart_id):
 class CartDetailAPIView(APIView):
     """
     Retrieve current cart details, items, count, and total amount.
-    Supports both logged-in users and guest sessions.
+    Supports both logged-in users and cryptographically verified guest sessions.
     """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        cart, new_session_key = get_or_create_cart(request)
+        cart, new_session_token = resolve_cart(request)
         cart = load_cart_optimized(cart.pk)
         serializer = CartSerializer(cart, context={"request": request})
         data = serializer.data
         response = Response(data, status=status.HTTP_200_OK)
-        if new_session_key:
-            response["X-Session-Key"] = new_session_key
+        if new_session_token:
+            response["X-Session-Key"] = new_session_token
         return response
 
 
@@ -87,7 +67,7 @@ class AddToCartAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        cart, new_session_key = get_or_create_cart(request)
+        cart, new_session_token = resolve_cart(request)
 
         item, created = CartItem.objects.get_or_create(
             cart=cart, variant=variant, defaults={"quantity": quantity}
@@ -111,8 +91,8 @@ class AddToCartAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-        if new_session_key:
-            response["X-Session-Key"] = new_session_key
+        if new_session_token:
+            response["X-Session-Key"] = new_session_token
         return response
 
 
@@ -127,7 +107,7 @@ class UpdateCartItemAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def patch(self, request, item_id):
-        cart, _ = get_or_create_cart(request)
+        cart, _ = resolve_cart(request)
         item = get_object_or_404(CartItem, pk=item_id, cart=cart)
 
         serializer = UpdateCartItemSerializer(data=request.data)
@@ -176,7 +156,7 @@ class RemoveCartItemAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def delete(self, request, item_id):
-        cart, _ = get_or_create_cart(request)
+        cart, _ = resolve_cart(request)
         item = get_object_or_404(CartItem, pk=item_id, cart=cart)
         item.delete()
         return Response({
@@ -193,7 +173,7 @@ class ClearCartAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        cart, _ = get_or_create_cart(request)
+        cart, _ = resolve_cart(request)
         cart.items.all().delete()
         return Response({
             "success": True,
@@ -217,25 +197,12 @@ class MergeGuestCartAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        guest_cart = Cart.objects.filter(session_key=guest_key, user=None).first()
-        if not guest_cart:
+        user_cart, stats = merge_guest_cart_into_user_cart(guest_key, request.user)
+        if stats.get("status") in ("not_found", "invalid_key"):
             return Response({"message": "Guest cart not found or already merged."})
 
-        user_cart, _ = Cart.objects.get_or_create(user=request.user)
-
-        for item in guest_cart.items.select_related("variant").all():
-            existing = CartItem.objects.filter(cart=user_cart, variant=item.variant).first()
-            if existing:
-                existing.quantity += item.quantity
-                existing.save()
-            else:
-                item.cart = user_cart
-                item.save()
-
-        guest_cart.delete()
         return Response({
             "success": True,
             "message": "Guest cart merged successfully.",
             "cart": CartSerializer(load_cart_optimized(user_cart.pk), context={"request": request}).data,
         })
-

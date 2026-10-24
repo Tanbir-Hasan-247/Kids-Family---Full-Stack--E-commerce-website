@@ -1406,6 +1406,7 @@ def process_conversational_order(
     session_key: str = None,
     user=None,
     ctx: dict = None,
+    request=None,
 ):
     """
     Detects if the user wants to order directly inside chat.
@@ -1415,6 +1416,43 @@ def process_conversational_order(
     """
     if not ctx:
         ctx = get_store_context()
+
+    # Priority check: If session already has an active pending order draft and customer explicitly confirms
+    lower_msg = message.lower()
+    confirm_cues = ["হ্যাঁ", "হ্যা", "yes", "confirm", "কনফার্ম", "অর্ডার নিশ্চিত", "নিশ্চিত করছি", "পাঠিয়ে দিন", "পাঠান", "অর্ডার কনফার্ম"]
+    is_explicit_confirmation = any(c in lower_msg for c in confirm_cues)
+
+    if is_explicit_confirmation and request and hasattr(request, "session") and request.session.get("pending_order_draft"):
+        from apps.ai_assistant.agent.tools.order_tools import execute_confirm_order
+        confirm_res = execute_confirm_order(
+            request=request,
+            user=user,
+            session_key=session_key,
+        )
+        if confirm_res.get("success"):
+            return {
+                "success": True,
+                "reply": confirm_res.get("message", "আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।"),
+                "products": [],
+                "order": confirm_res.get("order"),
+                "order_created": True,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "cart_updated": True,
+                "intent": "order_created",
+            }
+        else:
+            return {
+                "success": False,
+                "reply": confirm_res.get("error", "অর্ডার নিশ্চিতকরণে সমস্যা হয়েছে।"),
+                "products": [],
+                "order": None,
+                "order_created": False,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "cart_updated": False,
+                "intent": "order_confirmation_failed",
+            }
 
     extracted = extract_order_entities(message, history=history, user=user)
     if not extracted["wants_to_order"]:
@@ -1516,108 +1554,90 @@ def process_conversational_order(
             "missing_fields": missing,
         }
 
-    # All required info available -> Atomically place Order
-    full_address = f"{address}, {city}" if city and city.lower() not in address.lower() else address
-    addr_lower = full_address.lower()
-    dhaka_keywords = [
-        "dhaka", "ঢাকা", "dhanmondi", "ধানমন্ডি", "mirpur", "মিরপুর",
-        "uttara", "উত্তরা", "gulshan", "গুলশান", "banani", "বনানী",
-        "motijheel", "মতিঝিল", "badda", "বাড্ডা", "mohammadpur", "মোহাম্মদপুর",
-        "khilgaon", "খিলগাঁও", "rampura", "রামপুরা", "bashundhara", "বসুন্ধরা",
-        "jatrabari", "যাত্রাবাড়ী", "shyamoli", "শ্যামলী", "lalbagh", "লালবাগ",
-        "wari", "ওয়ারী", "keraniganj", "কেরানীগঞ্জ", "savar", "সাভার"
-    ]
-    is_dhaka = any(k in addr_lower for k in dhaka_keywords)
-    delivery_fee = Decimal(str(ctx["delivery_inside_dhaka"] if is_dhaka else ctx["delivery_outside_dhaka"]))
-    subtotal = sum(Decimal(str(item["price"])) * item["quantity"] for item in items_data)
-    total = subtotal + delivery_fee
-
-    with transaction.atomic():
-        order = Order.objects.create(
-            user=user if (user and getattr(user, "is_authenticated", False)) else None,
-            session_key=session_key if not (user and getattr(user, "is_authenticated", False)) else None,
-            full_name=name,
-            phone=phone,
-            email=(user.email if (user and getattr(user, "is_authenticated", False)) else ""),
-            address_line=address,
-            city=city or ("Dhaka" if is_dhaka else "Outside Dhaka"),
-            notes="Placed via Kids & Family AI Shopping Assistant",
-            payment_method="cod",
-            payment_status="unpaid",
-            status="pending",
-            subtotal=subtotal,
-            shipping_fee=delivery_fee,
-            total=total,
-        )
-
-        for item in items_data:
-            OrderItem.objects.create(
-                order=order,
-                variant=item["variant"],
-                product_name=item["product_name"],
-                variant_sku=item.get("sku", ""),
-                price=item["price"],
-                quantity=item["quantity"],
-            )
-            if item.get("variant"):
-                v = item["variant"]
-                v.stock = max(0, v.stock - item["quantity"])
-                v.save(update_fields=["stock"])
-
-        if is_from_cart and cart:
-            cart.items.all().delete()
-
-    items_summary = []
-    for i in items_data:
-        items_summary.append({
-            "product_name": i["product_name"],
-            "quantity": i["quantity"],
-            "price": float(i["price"]),
-            "variant_sku": i.get("sku", ""),
-        })
-
-    clean_city = order.city if order.city and order.city.lower() not in ["outside dhaka", "inside dhaka"] else ""
-    display_address = f"{order.address_line}, {clean_city}".strip(", ") if (clean_city and clean_city.lower() not in (order.address_line or "").lower()) else (order.address_line or "")
-
-    order_dict = {
-        "order_number": order.order_number,
-        "full_name": order.full_name,
-        "phone": order.phone,
-        "address": display_address,
-        "city": order.city,
-        "status": order.status,
-        "status_title": "পেন্ডিং (অর্ডার গৃহীত হয়েছে)",
-        "status_desc": "আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে এবং পর্যালোচনাধীন।",
-        "step": 1,
-        "subtotal": float(order.subtotal),
-        "shipping_fee": float(order.shipping_fee),
-        "total": float(order.total),
-        "payment_method": "ক্যাশ অন ডেলিভারি (COD)",
-        "payment_status": "অপরিশোধিত",
-        "created_at": order.created_at.strftime("%d %b %Y, %I:%M %p"),
-        "items": items_summary,
-    }
-
-    delivery_time_text = "২৪ থেকে ৪৮ ঘণ্টার মধ্যে (ঢাকার ভিতরে)" if is_dhaka else "৩ থেকে ৫ কার্যদিবসের মধ্যে (ঢাকার বাইরে)"
-    celebration_reply = (
-        f"🎉 **অভিনন্দন {order.full_name}!** আপনার অর্ডারটি সফলভাবে কনফার্ম করা হয়েছে!\n\n"
-        f"📦 **অর্ডার নম্বর:** `{order.order_number}`\n"
-        f"💰 **সর্বমোট বিল:** ৳{order.total:,.0f} (ক্যাশ অন ডেলিভারি)\n"
-        f"🚚 **ডেলিভারি ঠিকানা:** {display_address}\n"
-        f"⏱️ **সম্ভাব্য ডেলিভারি:** {delivery_time_text}\n\n"
-        f"আমাদের প্রতিনিধি পার্সেল প্রেরণের পূর্বে আপনার মোবাইল নম্বরে ({order.phone}) কল করে নিশ্চিত করবেন। "
-        f"নিচে আপনার অর্ডারের ডিজিটাল মেমো এবং লাইভ ট্র্যাকিং বাটন সংযুক্ত করা হলো। Kids & Family-র সাথে কেনাকাটা করার জন্য ধন্যবাদ! 🌸"
+    # Secure OrderDraft state machine delegation
+    # Explicit confirmation boundary: The legacy fallback CANNOT bypass confirmation or idempotency.
+    from apps.ai_assistant.agent.tools.order_tools import (
+        execute_prepare_order_draft,
+        execute_confirm_order,
     )
 
-    return {
-        "success": True,
-        "reply": celebration_reply,
-        "products": [],
-        "order": order_dict,
-        "order_created": True,
-        "intent": "order_created",
-        "engine": f"gemini ({PRIMARY_MODEL})",
-    }
+    lower_msg = message.lower()
+    confirm_cues = ["হ্যাঁ", "হ্যা", "yes", "confirm", "কনফার্ম", "অর্ডার নিশ্চিত", "নিশ্চিত করছি", "পাঠিয়ে দিন", "পাঠান", "অর্ডার কনফার্ম"]
+    is_explicit_confirmation = any(c in lower_msg for c in confirm_cues)
+
+    # 1. State 2: Explicit customer confirmation of active draft
+    if is_explicit_confirmation and request and hasattr(request, "session") and request.session.get("pending_order_draft"):
+        confirm_res = execute_confirm_order(
+            request=request,
+            user=user,
+            session_key=session_key,
+        )
+        if confirm_res.get("success"):
+            return {
+                "success": True,
+                "reply": confirm_res.get("message", "আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।"),
+                "products": [],
+                "order": confirm_res.get("order"),
+                "order_created": True,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "cart_updated": True,
+                "intent": "order_created",
+            }
+        else:
+            return {
+                "success": False,
+                "reply": confirm_res.get("error", "অর্ডার নিশ্চিতকরণে সমস্যা হয়েছে।"),
+                "products": [],
+                "order": None,
+                "order_created": False,
+                "order_draft": None,
+                "order_confirmation_requested": False,
+                "cart_updated": False,
+                "intent": "order_confirmation_failed",
+            }
+
+    # 2. State 1: Prepare order draft and request explicit confirmation
+    v_ids = [item["variant"].id for item in items_data if item.get("variant")]
+    v_qtys = [item["quantity"] for item in items_data if item.get("variant")]
+
+    prep_res = execute_prepare_order_draft(
+        recipient_name=name,
+        phone=phone,
+        address=address,
+        city=city or "Dhaka",
+        variant_ids=v_ids,
+        quantities=v_qtys,
+        payment_method="cod",
+        request=request,
+        user=user,
+        session_key=session_key,
+    )
+
+    if prep_res.get("success"):
+        return {
+            "success": True,
+            "reply": prep_res["instructions"],
+            "products": [],
+            "order": None,
+            "order_created": False,
+            "order_draft": prep_res.get("order_draft"),
+            "order_confirmation_requested": True,
+            "cart_updated": False,
+            "intent": "order_confirmation_requested",
+        }
+    else:
+        return {
+            "success": False,
+            "reply": prep_res.get("error", "অর্ডার প্রস্তুত করতে সমস্যা হয়েছে।"),
+            "products": [],
+            "order": None,
+            "order_created": False,
+            "order_draft": None,
+            "order_confirmation_requested": False,
+            "cart_updated": False,
+            "intent": "order_draft_failed",
+        }
 
 
 BN_EN_SYNONYMS = {
@@ -4438,11 +4458,36 @@ def detect_deterministic_intent_and_reply(
     return None
 
 
-def handle_chat_turn(message: str, history: list = None, session_key: str = None, user=None):
+def handle_chat_turn(message: str, history: list = None, session_key: str = None, user=None, request=None, **kwargs):
     """
     Main entry point for AI Shopping Chatbot.
-    Uses Google Gemini AI to generate warm, natural, human-like answers
-    grounded in live shop data, product catalogue, and order records.
+    Delegates to the modern Gemini Tool-Calling AgentOrchestrator.
+    Falls back gracefully to legacy pipeline if needed.
+    """
+    from apps.ai_assistant.agent import AgentOrchestrator
+
+    try:
+        return AgentOrchestrator.run(
+            message=message,
+            history=history,
+            session_key=session_key,
+            user=user,
+            request=request,
+        )
+    except Exception as e:
+        logger.exception(f"[handle_chat_turn] AgentOrchestrator encountered error: {e}")
+        return _legacy_handle_chat_turn(
+            message=message,
+            history=history,
+            session_key=session_key,
+            user=user,
+            request=request,
+        )
+
+
+def _legacy_handle_chat_turn(message: str, history: list = None, session_key: str = None, user=None, request=None, **kwargs):
+    """
+    Legacy deterministic & single-turn Gemini pipeline retained for safe fallback.
     """
     message_clean = normalize_bengali_digits((message or "").strip())
     if not message_clean:
@@ -4493,7 +4538,8 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
         "অর্ডার কনফার্ম", "অর্ডার করো", "অর্ডার করুন", "অর্ডার করে দাও", "অর্ডার করে দেন",
         "অর্ডার দিন", "অর্ডার পাঠান", "cart er order", "কার্টের অর্ডার", "কার্ট অর্ডার",
         "ক্যাশ অন ডেলিভারি", "cash on delivery", "cod", "কিনতে চাই", "kinte chai",
-        "নিতে চাই", "nite chai", "buy now"
+        "নিতে চাই", "nite chai", "buy now", "হ্যাঁ", "হ্যা", "yes", "confirm", "কনফার্ম",
+        "অর্ডার নিশ্চিত", "নিশ্চিত করছি", "পাঠিয়ে দিন", "পাঠান"
     ]
     has_order_cue = any(op in lower for op in order_intent_phrases)
 
@@ -4504,6 +4550,7 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
             session_key=session_key,
             user=user,
             ctx=ctx,
+            request=request,
         )
         if order_result:
             return order_result
@@ -4527,6 +4574,7 @@ def handle_chat_turn(message: str, history: list = None, session_key: str = None
             session_key=session_key,
             user=user,
             ctx=ctx,
+            request=request,
         )
         if order_result:
             return order_result

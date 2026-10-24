@@ -56,6 +56,7 @@ class AIChatAPIView(APIView):
                 history=history,
                 session_key=session_key,
                 user=request.user if request.user.is_authenticated else None,
+                request=request,
             )
             return Response(result, status=status.HTTP_200_OK)
         except Exception as e:
@@ -66,6 +67,11 @@ class AIChatAPIView(APIView):
                     "reply": "দুঃখিত, এই মুহূর্তে সাময়িক সমস্যা হচ্ছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা হেল্পলাইনে কল করুন।",
                     "products": [],
                     "order": None,
+                    "order_created": False,
+                    "cart_updated": False,
+                    "added_product_id": None,
+                    "order_draft": None,
+                    "order_confirmation_requested": False,
                     "error": str(e),
                 },
                 status=status.HTTP_200_OK,
