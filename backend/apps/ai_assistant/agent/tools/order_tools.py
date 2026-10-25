@@ -19,7 +19,7 @@ from django.db import models
 from django.utils import timezone
 from apps.orders.models import Order, OrderItem
 from apps.cart.models import Cart
-from apps.cart.services import resolve_cart
+from apps.cart.services import resolve_cart, extract_raw_guest_key
 from apps.products.models import ProductVariant
 from apps.dashboard.models import ShopSetting
 from apps.ai_assistant.services import (
@@ -255,7 +255,9 @@ def execute_prepare_order_draft(
         elif user and getattr(user, "is_authenticated", False):
             cart = Cart.objects.filter(user=user).first()
         elif session_key:
-            cart = Cart.objects.filter(session_key=session_key, user=None).first()
+            raw_k, _ = extract_raw_guest_key(session_key)
+            target_key = raw_k or session_key
+            cart = Cart.objects.filter(session_key=target_key, user=None).first()
 
         if cart:
             for item in cart.items.select_related("variant__product").all():
@@ -438,7 +440,7 @@ def execute_confirm_order(
             if user and getattr(user, "is_authenticated", False):
                 if existing_order.user == user or user.is_staff:
                     is_auth = True
-            elif existing_order.session_key and session_key and existing_order.session_key == session_key:
+            elif existing_order.session_key and session_key and existing_order.session_key in (session_key, (extract_raw_guest_key(session_key)[0] or session_key)):
                 is_auth = True
             elif ownership_token:
                 comp_hash = hmac.new(settings.SECRET_KEY.encode(), ownership_token.encode(), hashlib.sha256).hexdigest()
@@ -517,7 +519,11 @@ def execute_confirm_order(
             notes_payload = f"[idempotency_key:{idempotency_key}][draft_id:{draft.get('draft_id')}]".strip()
             order = Order.objects.create(
                 user=user if user and getattr(user, "is_authenticated", False) else None,
-                session_key=session_key if not (user and getattr(user, "is_authenticated", False)) else None,
+                session_key=(
+                    (extract_raw_guest_key(session_key)[0] or session_key)
+                    if session_key and not (user and getattr(user, "is_authenticated", False))
+                    else None
+                ),
                 full_name=draft["recipient_name"],
                 phone=draft["phone"],
                 email="",
@@ -557,7 +563,9 @@ def execute_confirm_order(
             elif user and getattr(user, "is_authenticated", False):
                 cart = Cart.objects.filter(user=user).first()
             elif session_key:
-                cart = Cart.objects.filter(session_key=session_key, user=None).first()
+                raw_k, _ = extract_raw_guest_key(session_key)
+                target_key = raw_k or session_key
+                cart = Cart.objects.filter(session_key=target_key, user=None).first()
 
             if cart:
                 cart.items.all().delete()
@@ -593,7 +601,7 @@ def execute_confirm_order(
                 if user and getattr(user, "is_authenticated", False):
                     if existing_order.user == user or user.is_staff:
                         is_auth = True
-                elif existing_order.session_key and session_key and existing_order.session_key == session_key:
+                elif existing_order.session_key and session_key and existing_order.session_key in (session_key, (extract_raw_guest_key(session_key)[0] or session_key)):
                     is_auth = True
                 elif ownership_token:
                     comp_hash = hmac.new(settings.SECRET_KEY.encode(), ownership_token.encode(), hashlib.sha256).hexdigest()

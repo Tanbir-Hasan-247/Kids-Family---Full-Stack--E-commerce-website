@@ -107,7 +107,7 @@ class UpdateCartItemAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def patch(self, request, item_id):
-        cart, _ = resolve_cart(request)
+        cart, new_session_token = resolve_cart(request)
         item = get_object_or_404(CartItem, pk=item_id, cart=cart)
 
         serializer = UpdateCartItemSerializer(data=request.data)
@@ -128,11 +128,14 @@ class UpdateCartItemAPIView(APIView):
             item.quantity -= 1
             if item.quantity < 1:
                 item.delete()
-                return Response({
+                resp = Response({
                     "success": True,
                     "removed": True,
                     "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
                 })
+                if new_session_token:
+                    resp["X-Session-Key"] = new_session_token
+                return resp
             item.save()
         elif action == "set" or direct_quantity is not None:
             new_qty = direct_quantity or 1
@@ -141,12 +144,15 @@ class UpdateCartItemAPIView(APIView):
             item.quantity = new_qty
             item.save()
 
-        return Response({
+        resp = Response({
             "success": True,
             "removed": False,
             "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
             "item": CartItemSerializer(item).data,
         })
+        if new_session_token:
+            resp["X-Session-Key"] = new_session_token
+        return resp
 
 
 class RemoveCartItemAPIView(APIView):
@@ -156,14 +162,17 @@ class RemoveCartItemAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def delete(self, request, item_id):
-        cart, _ = resolve_cart(request)
+        cart, new_session_token = resolve_cart(request)
         item = get_object_or_404(CartItem, pk=item_id, cart=cart)
         item.delete()
-        return Response({
+        resp = Response({
             "success": True,
             "message": "Item removed from cart.",
             "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
         })
+        if new_session_token:
+            resp["X-Session-Key"] = new_session_token
+        return resp
 
 
 class ClearCartAPIView(APIView):
@@ -173,13 +182,16 @@ class ClearCartAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        cart, _ = resolve_cart(request)
+        cart, new_session_token = resolve_cart(request)
         cart.items.all().delete()
-        return Response({
+        resp = Response({
             "success": True,
             "message": "Cart cleared.",
             "cart": CartSerializer(load_cart_optimized(cart.pk), context={"request": request}).data,
         })
+        if new_session_token:
+            resp["X-Session-Key"] = new_session_token
+        return resp
 
 
 class MergeGuestCartAPIView(APIView):

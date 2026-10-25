@@ -47,6 +47,7 @@ class AIChatAPIView(APIView):
         session_key = (
             request.data.get("session_key")
             or request.headers.get("X-Session-Key")
+            or request.headers.get("x-session-key")
             or (request.session.session_key if hasattr(request, "session") else None)
         )
 
@@ -58,7 +59,13 @@ class AIChatAPIView(APIView):
                 user=request.user if request.user.is_authenticated else None,
                 request=request,
             )
-            return Response(result, status=status.HTTP_200_OK)
+            resp = Response(result, status=status.HTTP_200_OK)
+            if not (request.user and request.user.is_authenticated) and session_key:
+                from apps.cart.services import extract_raw_guest_key, sign_guest_cart_key
+                raw_k, _ = extract_raw_guest_key(session_key)
+                if raw_k:
+                    resp["X-Session-Key"] = sign_guest_cart_key(raw_k)
+            return resp
         except Exception as e:
             logger.exception(f"Error in AIChatAPIView: {e}")
             return Response(

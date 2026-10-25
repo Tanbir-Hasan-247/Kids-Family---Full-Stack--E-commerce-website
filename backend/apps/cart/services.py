@@ -13,6 +13,7 @@ GUEST_CART_SALT = "guest_cart"
 # 14-day validity for signed guest tokens
 MAX_GUEST_CART_AGE = 14 * 86400
 LEGACY_UUID_REGEX = re.compile(r"^[a-f0-9]{32}$", re.IGNORECASE)
+SAFE_GUEST_KEY_REGEX = re.compile(r"^[-a-zA-Z0-9_]{8,40}$")
 
 
 def get_guest_cart_signer() -> TimestampSigner:
@@ -46,8 +47,10 @@ def unsign_guest_cart_token(token: str) -> Optional[str]:
 def extract_raw_guest_key(token_or_key: str) -> Tuple[Optional[str], bool]:
     """
     Extracts raw session key from either:
-    1. A valid signed token (<raw_key>:<timestamp>:<signature>) -> returns (raw_key, is_legacy=False)
-    2. A legacy 32-character hex UUID existing in Cart_cart -> returns (raw_key, is_legacy=True)
+    1. A valid signed token (raw_key:timestamp:signature) -> returns (raw_key, is_legacy=False)
+    2. A client-generated guest session key (e.g. guest_alphanumeric) -> returns (raw_key, is_legacy=True)
+    3. A legacy 32-character hex UUID existing in Cart_cart -> returns (raw_key, is_legacy=True)
+    4. Any safe existing session key in Cart_cart -> returns (raw_key, is_legacy=True)
     Returns (None, False) if invalid or untrusted.
     """
     if not token_or_key or not isinstance(token_or_key, str):
@@ -60,9 +63,17 @@ def extract_raw_guest_key(token_or_key: str) -> Tuple[Optional[str], bool]:
     if raw_key:
         return raw_key, False
 
-    # 2. Migration Grace Period: Check for existing legacy 32-char hex UUID in DB
+    # 2. Client-generated guest session key (e.g. guest_s1q7x4p89km23za)
+    if token_clean.startswith("guest_") and SAFE_GUEST_KEY_REGEX.match(token_clean):
+        return token_clean, True
+
+    # 3. Migration Grace Period: Check for existing legacy 32-char hex UUID in DB
     if LEGACY_UUID_REGEX.match(token_clean):
-        # Only accept legacy UUID if it already exists in the database
+        if Cart.objects.filter(session_key=token_clean, user=None).exists():
+            return token_clean, True
+
+    # 4. Any other safe session key currently active in database
+    if SAFE_GUEST_KEY_REGEX.match(token_clean):
         if Cart.objects.filter(session_key=token_clean, user=None).exists():
             return token_clean, True
 
@@ -74,7 +85,8 @@ def resolve_cart(request) -> Tuple[Cart, Optional[str]]:
     Centralized cart resolution for authenticated users and guests.
     Guarantees:
     - Authenticated users are bound to their user cart.
-    - Guests must supply a valid cryptographically signed token or valid legacy UUID.
+    - Guests must supply a valid cryptographically signed token, a valid guest session key,
+      or valid legacy UUID.
     - Untrusted, forged, or missing keys result in a fresh cryptographically signed key.
     Returns (cart, token_to_return_in_response_header).
     `token_to_return_in_response_header` is populated if a new token was issued or an upgrade occurred.
@@ -87,8 +99,21 @@ def resolve_cart(request) -> Tuple[Cart, Optional[str]]:
     # Guest flow
     query_dict = getattr(request, "query_params", getattr(request, "GET", {}))
     query_session_key = query_dict.get("session_key") if hasattr(query_dict, "get") else None
+
+    # Safe DRF request.data inspection
+    body_session_key = None
+    try:
+        data_dict = getattr(request, "data", None)
+        if isinstance(data_dict, dict):
+            body_session_key = data_dict.get("session_key") or data_dict.get("guest_session_key")
+    except Exception:
+        pass
+
+    header_key = request.headers.get("X-Session-Key") or request.headers.get("x-session-key")
+
     candidate_token = (
-        request.headers.get("X-Session-Key")
+        header_key
+        or body_session_key
         or query_session_key
         or getattr(getattr(request, "session", None), "session_key", None)
     )
@@ -108,7 +133,7 @@ def resolve_cart(request) -> Tuple[Cart, Optional[str]]:
     else:
         needs_new_token = True
 
-    if not raw_key or needs_new_token and not raw_key:
+    if not raw_key:
         # Establish Django session if available
         if hasattr(request, "session"):
             if not request.session.session_key:
@@ -122,7 +147,11 @@ def resolve_cart(request) -> Tuple[Cart, Optional[str]]:
 
         needs_new_token = True
 
-    cart, _ = Cart.objects.get_or_create(session_key=raw_key, user=None)
+    try:
+        cart, _ = Cart.objects.get_or_create(session_key=raw_key, user=None)
+    except IntegrityError:
+        cart = Cart.objects.get(session_key=raw_key, user=None)
+
     token_to_return = sign_guest_cart_key(raw_key) if needs_new_token else None
 
     return cart, token_to_return

@@ -18,7 +18,8 @@ venv/
 
 # Scratch & Test scripts
 scratch/
-test_*.py
+/test_*.py
+!backend/tests/test_*.py
 *.tmp
 *.bak
 *.swp

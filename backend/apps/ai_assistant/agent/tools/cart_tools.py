@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, Optional
 from django.db import transaction
 from apps.cart.models import Cart, CartItem
-from apps.cart.services import resolve_cart
+from apps.cart.services import resolve_cart, extract_raw_guest_key
 from apps.products.models import ProductVariant
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,9 @@ def _get_cart_from_context(request=None, user=None, session_key=None) -> Optiona
         return cart
 
     if session_key:
-        cart, _ = Cart.objects.get_or_create(session_key=session_key, user=None)
+        raw_k, _ = extract_raw_guest_key(session_key)
+        target_key = raw_k or session_key
+        cart, _ = Cart.objects.get_or_create(session_key=target_key, user=None)
         return cart
 
     return None

@@ -24,7 +24,7 @@ class CheckoutAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        cart, _ = get_or_create_cart(request)
+        cart, new_session_token = get_or_create_cart(request)
         cart_items = cart.items.select_related("variant__product").all()
 
         if not cart_items.exists():
@@ -105,7 +105,7 @@ class CheckoutAPIView(APIView):
             .get(pk=order.pk)
         )
 
-        return Response(
+        resp = Response(
             {
                 "success": True,
                 "message": "Order placed successfully!",
@@ -113,6 +113,9 @@ class CheckoutAPIView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+        if new_session_token:
+            resp["X-Session-Key"] = new_session_token
+        return resp
 
 
 class OrderListAPIView(generics.ListAPIView):
@@ -136,11 +139,14 @@ class OrderListAPIView(generics.ListAPIView):
         session_key = (
             self.request.headers.get("X-Session-Key")
             or self.request.query_params.get("session_key")
-            or self.request.session.session_key
+            or getattr(getattr(self.request, "session", None), "session_key", None)
         )
         if session_key:
+            from apps.cart.services import extract_raw_guest_key
+            raw_k, _ = extract_raw_guest_key(session_key)
+            target_key = raw_k or session_key
             return (
-                Order.objects.filter(session_key=session_key)
+                Order.objects.filter(session_key=target_key)
                 .prefetch_related(
                     "items__variant__product",
                     "items__variant__attributes__attribute_type",
@@ -179,8 +185,12 @@ class OrderDetailAPIView(APIView):
             )
             phone_check = request.query_params.get("phone") or request.headers.get("X-Customer-Phone")
 
-            if order.session_key and session_key and order.session_key == session_key:
-                is_authorized = True
+            if order.session_key and session_key:
+                from apps.cart.services import extract_raw_guest_key
+                raw_k, _ = extract_raw_guest_key(session_key)
+                target_key = raw_k or session_key
+                if order.session_key == target_key:
+                    is_authorized = True
             elif phone_check:
                 c_phone = re.sub(r"[^\d]", "", str(phone_check))[-11:]
                 o_phone = re.sub(r"[^\d]", "", str(order.phone or ""))[-11:]
@@ -291,8 +301,12 @@ class OrderPaymentStubAPIView(APIView):
                 or (request.session.session_key if hasattr(request, "session") else None)
             )
             phone_check = request.data.get("phone") or request.query_params.get("phone")
-            if order.session_key and session_key and order.session_key == session_key:
-                is_authorized = True
+            if order.session_key and session_key:
+                from apps.cart.services import extract_raw_guest_key
+                raw_k, _ = extract_raw_guest_key(session_key)
+                target_key = raw_k or session_key
+                if order.session_key == target_key:
+                    is_authorized = True
             elif phone_check:
                 c_phone = re.sub(r"[^\d]", "", str(phone_check))[-11:]
                 o_phone = re.sub(r"[^\d]", "", str(order.phone or ""))[-11:]

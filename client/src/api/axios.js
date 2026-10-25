@@ -81,7 +81,7 @@ api.interceptors.request.use((config) => {
 // Interceptor to capture session key if backend generates one
 api.interceptors.response.use(
   (response) => {
-    const backendSessionKey = response.headers['x-session-key'];
+    const backendSessionKey = response.headers?.['x-session-key'] || response.headers?.['X-Session-Key'];
     if (backendSessionKey) {
       localStorage.setItem('kf_session_key', backendSessionKey);
     }

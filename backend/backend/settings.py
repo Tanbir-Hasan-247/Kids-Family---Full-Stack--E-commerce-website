@@ -333,6 +333,11 @@ CORS_ALLOW_HEADERS = [
     "x-session-key",
 ]
 
+CORS_EXPOSE_HEADERS = [
+    "x-session-key",
+    "X-Session-Key",
+]
+
 # Password Hashers (Argon2 / PBKDF2)
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
