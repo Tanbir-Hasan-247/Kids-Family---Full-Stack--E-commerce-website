@@ -28,14 +28,15 @@ export const WishlistProvider = ({ children }) => {
 
   const toggleWishlist = async (productId) => {
     try {
-      const res = await api.post(`/wishlist/toggle/${productId}/`);
+      const pId = Number(productId);
+      const res = await api.post(`/wishlist/toggle/${pId}/`);
       setCount(res.data.count);
       setFavoritedIds((prev) => {
         const next = new Set(prev);
         if (res.data.favorited) {
-          next.add(productId);
+          next.add(pId);
         } else {
-          next.delete(productId);
+          next.delete(pId);
         }
         return next;
       });

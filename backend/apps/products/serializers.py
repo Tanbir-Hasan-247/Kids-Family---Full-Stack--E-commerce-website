@@ -223,11 +223,19 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         if not request:
             return False
         from apps.wishlist.models import FavoriteItem
-        user = request.user if request.user.is_authenticated else None
-        session_key = request.headers.get("X-Session-Key") or request.query_params.get("session_key")
+        user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
         if user:
             return FavoriteItem.objects.filter(user=user, product=obj).exists()
-        elif session_key:
-            return FavoriteItem.objects.filter(session_key=session_key, product=obj).exists()
+
+        raw_token = (
+            request.headers.get("X-Session-Key")
+            or request.headers.get("x-session-key")
+            or request.query_params.get("session_key")
+        )
+        if raw_token:
+            from apps.cart.services import extract_raw_guest_key
+            raw_k, _ = extract_raw_guest_key(raw_token)
+            target_key = ((raw_k or raw_token).strip())[:40]
+            return FavoriteItem.objects.filter(session_key=target_key, product=obj).exists()
         return False
 
