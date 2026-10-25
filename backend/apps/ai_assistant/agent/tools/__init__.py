@@ -84,12 +84,15 @@ def get_agent_tools() -> list:
         ),
         types.FunctionDeclaration(
             name="manage_cart",
-            description="View, add, remove, or clear items in the customer's active shopping bag.",
+            description="View, add, remove, or clear items in the customer's active shopping bag. To add an item, provide variant_id directly or specify product_id with optional color and size (resolved against verified live inventory).",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
                     "action": types.Schema(type=types.Type.STRING, description="Action to perform: 'get', 'add', 'remove', or 'clear'"),
                     "variant_id": types.Schema(type=types.Type.INTEGER, description="ProductVariant ID to add or remove"),
+                    "product_id": types.Schema(type=types.Type.INTEGER, description="Product ID to add (used if variant_id is not directly known)"),
+                    "color": types.Schema(type=types.Type.STRING, description="Requested color name e.g. 'White', 'Pink', 'সাদা'"),
+                    "size": types.Schema(type=types.Type.STRING, description="Requested size or age tag e.g. 'M', 'L', '2-3Y', '৪-৫ বছর'"),
                     "quantity": types.Schema(type=types.Type.INTEGER, description="Quantity (default: 1, maximum: 10)"),
                 },
                 required=["action"],
@@ -176,12 +179,20 @@ def dispatch_tool_call(tool_name: str, tool_args: Optional[dict], context: dict)
                 except (ValueError, TypeError):
                     max_p = None
 
+            q_str = str(args.get("query", ""))
+            from apps.ai_assistant.services import is_pure_exclusion_or_continuation_query
+            apply_excludes = (
+                shown_product_ids
+                if (is_pure_exclusion_or_continuation_query(q_str) and shown_product_ids)
+                else None
+            )
+
             return execute_search_products(
-                query=str(args.get("query", "")),
+                query=q_str,
                 category=str(args.get("category_slug", "") or args.get("target", "")),
                 max_price=max_p,
                 limit=4,
-                exclude_ids=shown_product_ids,
+                exclude_ids=apply_excludes,
             )
 
         # 2. get_product_details
@@ -219,6 +230,14 @@ def dispatch_tool_call(tool_name: str, tool_args: Optional[dict], context: dict)
             except (ValueError, TypeError):
                 v_id_int = None
 
+            p_id = args.get("product_id")
+            if p_id is None and context.get("active_product"):
+                p_id = context["active_product"].get("id")
+            try:
+                p_id_int = int(p_id) if p_id is not None else None
+            except (ValueError, TypeError):
+                p_id_int = None
+
             qty = 1
             try:
                 if "quantity" in args and args["quantity"] is not None:
@@ -229,8 +248,10 @@ def dispatch_tool_call(tool_name: str, tool_args: Optional[dict], context: dict)
             return execute_manage_cart(
                 action=action,
                 variant_id=v_id_int,
+                product_id=p_id_int,
+                color=args.get("color"),
+                size=args.get("size"),
                 quantity=qty,
-                product_id=args.get("product_id"),
                 request=request,
                 user=user,
                 session_key=session_key,

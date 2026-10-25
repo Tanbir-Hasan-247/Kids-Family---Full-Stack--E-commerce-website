@@ -63,15 +63,30 @@ class AgentOrchestrator:
         if blocked_reply:
             return blocked_reply
 
-        # 2. Build Store Context & Gemini Client
+        # 2. Build Store Context, Active Product & Gemini Client
         store_context = get_verified_shop_settings()
+        active_product = ContextManager.extract_active_product_context(
+            history=history, request=request, session_key=session_key
+        )
+        if active_product and request and hasattr(request, "session"):
+            try:
+                request.session["active_product_id"] = active_product["id"]
+            except Exception:
+                pass
 
-        # 2.1 Fast-Path: Deterministic Store FAQs & Live Order Tracking
+        # 2.1 Fast-Path: Deterministic Store FAQs, Live Order Tracking & Unambiguous Product Context
         fast_direct = cls._check_fast_deterministic_path(
-            clean_msg, history=history, user=user, session_key=session_key, store_context=store_context
+            clean_msg,
+            history=history,
+            user=user,
+            session_key=session_key,
+            store_context=store_context,
+            active_product=active_product,
+            request=request,
         )
         if fast_direct:
             return fast_direct
+
         client = get_gemini_client()
         if not client:
             logger.warning("[Agent Orchestrator] Gemini client unavailable, falling back.")
@@ -79,7 +94,7 @@ class AgentOrchestrator:
 
         # 3. Prepare Tools, System Instruction & Context
         tools = get_agent_tools()
-        system_instruction = build_system_instruction(store_context)
+        system_instruction = build_system_instruction(store_context, active_product=active_product)
         contents, shown_ids = ContextManager.build_gemini_contents(
             clean_msg, history=history, session_key=session_key, user=user
         )
@@ -91,6 +106,8 @@ class AgentOrchestrator:
             "shown_product_ids": shown_ids,
             "store_context": store_context,
             "draft_context": draft_context,
+            "active_product": active_product,
+            "active_product_id": active_product["id"] if active_product else None,
         }
 
         # State collected from tools across iterations
@@ -192,6 +209,16 @@ class AgentOrchestrator:
                 return cls._fallback_response(clean_msg, history, session_key, user, store_context)
             final_reply = cls._compose_fallback_text(clean_msg, state, store_context)
 
+        # Ensure products card attached if cart was updated or active product discussed
+        if not state["products"] and active_product and (state["cart_updated"] or "product_detail" in state["intents"] or "cart_updated" in state["intents"]):
+            state["products"].append(active_product["card"])
+
+        if state.get("products") and request and hasattr(request, "session"):
+            try:
+                request.session["active_product_id"] = state["products"][0].get("id")
+            except Exception:
+                pass
+
         # Resolve dominant intent for frontend
         dominant_intent = "general"
         if state["order_created"]:
@@ -290,6 +317,9 @@ class AgentOrchestrator:
         user=None,
         session_key: Optional[str] = None,
         store_context: Optional[dict] = None,
+        active_product: Optional[dict] = None,
+        request=None,
+        **kwargs,
     ) -> Optional[dict]:
         """
         Sub-millisecond fast-path for:
@@ -442,6 +472,222 @@ class AgentOrchestrator:
                 "intent": "store_policy",
                 "engine": "fast-faq-engine",
             }
+
+        # 4. Unambiguous Product Context & Follow-up Operations
+        if not active_product and history:
+            active_product = ContextManager.extract_active_product_context(
+                history=history, request=request, session_key=session_key
+            )
+
+        garment_keywords = [
+            "পাঞ্জাবি", "panjabi", "kurta", "কুর্তা", "shirt", "শার্ট", "tshirt",
+            "frock", "ফ্রক", "gown", "গাউন", "lehenga", "লেহেঙ্গা", "saree", "শাড়ি", "কাবলি", "kabli"
+        ]
+        is_different_search = (
+            any(w in lower for w in garment_keywords)
+            and active_product
+            and not any(w in active_product.get("name", "").lower() for w in garment_keywords)
+        )
+
+        if not is_different_search:
+            from .tools.product_tools import extract_color_from_text, extract_size_from_text, resolve_variant_for_product
+            from .tools.cart_tools import execute_manage_cart
+
+            # A. Add to Cart Intent
+            has_cart_keyword = any(w in lower for w in [
+                "cart", "কার্ট", "কার্টে", "কার্টেও", "bag", "ব্যাগ", "ব্যাগে", "add to cart",
+                "যোগ করো", "যোগ করুন", "যোগ করে", "এড করো", "এড করুন", "এড করে", "এ্যাড করো",
+                "এ্যাড করুন", "কার্টে নিন", "কার্টে দিন", "কার্টে দাও", "ব্যাগে নিন", "ব্যাগে দিন",
+            ]) or (
+                any(w in lower for w in ["add", "এড", "এ্যাড", "যোগ"])
+                and any(w in lower for w in ["koro", "korun", "dao", "den", "din", "dew", "করো", "করুন", "দিন", "দাও", "নিন"])
+            )
+
+            if has_cart_keyword:
+                if active_product:
+                    col = extract_color_from_text(clean_msg, active_product.get("available_colors"))
+                    sz = extract_size_from_text(clean_msg, active_product.get("available_sizes"))
+                    cart_res = execute_manage_cart(
+                        action="add",
+                        product_id=active_product["id"],
+                        color=col,
+                        size=sz,
+                        quantity=1,
+                        request=request,
+                        user=user,
+                        session_key=session_key,
+                    )
+                    if cart_res.get("success"):
+                        reply = (
+                            f"{cart_res.get('message')}\n\n"
+                            f"• মোট আইটেম: {cart_res.get('total_items', 1)}টি\n"
+                            f"• মোট কার্ট মূল্য: ৳{cart_res.get('total_price', 0):.0f}\n\n"
+                            f"আপনি কি সরাসরি অর্ডার করতে চান নাকি আরও পণ্য দেখতে চান?"
+                        )
+                        return {
+                            "success": True,
+                            "reply": reply,
+                            "products": [active_product["card"]],
+                            "order": None,
+                            "order_created": False,
+                            "cart_updated": True,
+                            "added_product_id": active_product["id"],
+                            "order_draft": None,
+                            "order_confirmation_requested": False,
+                            "intent": "cart_updated",
+                            "engine": "fast-cart-engine",
+                        }
+                    else:
+                        return {
+                            "success": True,
+                            "reply": cart_res.get("error", "দুঃখিত, পণ্যটি কার্টে যোগ করা যায়নি।"),
+                            "products": [active_product["card"]],
+                            "order": None,
+                            "order_created": False,
+                            "cart_updated": False,
+                            "added_product_id": None,
+                            "order_draft": None,
+                            "order_confirmation_requested": False,
+                            "intent": "variant_unavailable",
+                            "engine": "fast-cart-engine",
+                        }
+                else:
+                    return {
+                        "success": True,
+                        "reply": "আপনি কোন পোশাকটি কার্টে যোগ করতে চান? অনুগ্রহ করে পোশাকটির নাম বা লিংক জানান, আমি এখনই চেক করে কার্টে যোগ করে দিচ্ছি। 😊",
+                        "products": [],
+                        "order": None,
+                        "order_created": False,
+                        "cart_updated": False,
+                        "added_product_id": None,
+                        "order_draft": None,
+                        "order_confirmation_requested": False,
+                        "intent": "clarification_needed",
+                        "engine": "fast-cart-engine",
+                    }
+
+            # B. Variant / Color / Size Availability Query
+            if active_product:
+                col = extract_color_from_text(clean_msg, active_product.get("available_colors"))
+                sz = extract_size_from_text(clean_msg, active_product.get("available_sizes"))
+                is_variant_query = bool(col or sz) and (
+                    "?" in clean_msg
+                    or any(w in lower for w in [
+                        "ache", "ase", "pabo", "paowa", "hobe", "আছে", "হবে", "পাওয়া", "পাব",
+                        "size", "সাইজ", "color", "কালার", "রং"
+                    ])
+                    or len(clean_msg.split()) <= 4
+                )
+
+                if is_variant_query:
+                    res = resolve_variant_for_product(active_product["id"], color=col, size=sz)
+                    if res.get("success"):
+                        v_col = col or res.get("color")
+                        v_sz = sz or res.get("size")
+                        col_str = f"**{v_col}** কালারে " if v_col else ""
+                        sz_str = f"**{v_sz}** সাইজটি " if v_sz else ""
+                        stock_cnt = res.get("stock", 0)
+                        if res.get("in_stock", True):
+                            reply = (
+                                f"হ্যাঁ! **{active_product['name']}**-এর {col_str}{sz_str}আমাদের স্টকে অ্যাভেইলেবল রয়েছে। 🌸\n\n"
+                                f"• মূল্য: ৳{res.get('price', active_product['starting_price']):.0f}\n"
+                                f"• বর্তমান স্টক: {stock_cnt}টি\n\n"
+                                f"আপনি চাইলে সরাসরি নিচের 'কার্টে নিন' বাটনে চাপ দিয়ে অথবা আমাকে 'কার্টে যোগ করো' লিখে এটি কার্টে নিতে পারেন।"
+                            )
+                        else:
+                            reply = (
+                                f"দুঃখিত, **{active_product['name']}**-এর {col_str}{sz_str}এই মুহূর্তে স্টক আউট হয়ে গেছে।\n\n"
+                                f"তবে এই পোশাকে অন্য কিছু ভ্যারিয়েন্ট অ্যাভেইলেবল আছে। আপনি কি অন্য কোনো সাইজ বা কালার দেখতে চান?"
+                            )
+                        return {
+                            "success": True,
+                            "reply": reply,
+                            "products": [active_product["card"]],
+                            "order": None,
+                            "order_created": False,
+                            "cart_updated": False,
+                            "added_product_id": None,
+                            "order_draft": None,
+                            "order_confirmation_requested": False,
+                            "intent": "product_detail",
+                            "engine": "fast-variant-engine",
+                        }
+                    elif res.get("reason") in ("variant_not_found", "color_not_found", "size_not_found"):
+                        conf_opts = res.get("confirmed_options", {})
+                        conf_lines = []
+                        for c_name, sz_list in conf_opts.items():
+                            if sz_list:
+                                conf_lines.append(f"• **{c_name}** কালারে: সাইজ **{', '.join(sz_list)}**")
+                            else:
+                                conf_lines.append(f"• **{c_name}** কালার")
+                        opts_str = "\n".join(conf_lines) if conf_lines else "বর্তমানে অন্য কোনো কম্বিনেশন খালি নেই।"
+                        col_str = f"**{col}** কালারে " if col else ""
+                        sz_str = f"**{sz}** সাইজটি " if sz else ""
+                        reply = (
+                            f"দুঃখিত, **{active_product['name']}** পোশাকে {col_str}{sz_str}এই মুহূর্তে স্টকে নেই।\n\n"
+                            f"তবে এই পোশাকে নিচের সাইজ ও কালারগুলো স্টকে অ্যাভেইলেবল রয়েছে:\n{opts_str}\n\n"
+                            f"আপনি কি এর মধ্য থেকে কোনো সাইজ কার্টে নিতে চান?"
+                        )
+                        return {
+                            "success": True,
+                            "reply": reply,
+                            "products": [active_product["card"]],
+                            "order": None,
+                            "order_created": False,
+                            "cart_updated": False,
+                            "added_product_id": None,
+                            "order_draft": None,
+                            "order_confirmation_requested": False,
+                            "intent": "variant_unavailable",
+                            "engine": "fast-variant-engine",
+                        }
+
+            # C. Price Query Intent
+            has_price_query = any(w in lower for w in [
+                "দাম কত", "মূল্য কত", "price koto", "koto dam", "dam koto", "rate koto",
+                "দাম কত?", "মূল্য কত?", "price koto?", "koto dam?", "dam koto?"
+            ]) or (
+                any(w in lower for w in ["দাম", "মূল্য", "price", "dam", "rate"])
+                and any(w in lower for w in ["কত", "koto"])
+            )
+
+            if has_price_query:
+                if active_product:
+                    c_str = ", ".join(active_product.get("available_colors", []))
+                    s_str = ", ".join(active_product.get("available_sizes", []))
+                    reply = (
+                        f"**{active_product['name']}**-এর মূল্য ৳{active_product['starting_price']:.0f}। 🌸\n\n"
+                        f"• কালার: {c_str or 'স্ট্যান্ডার্ড'}\n"
+                        f"• সাইজ: {s_str or 'স্ট্যান্ডার্ড'}\n\n"
+                        f"আপনি কি এটি কার্টে যোগ করতে চান?"
+                    )
+                    return {
+                        "success": True,
+                        "reply": reply,
+                        "products": [active_product["card"]],
+                        "order": None,
+                        "order_created": False,
+                        "cart_updated": False,
+                        "added_product_id": None,
+                        "order_draft": None,
+                        "order_confirmation_requested": False,
+                        "intent": "product_detail",
+                        "engine": "fast-price-engine",
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "reply": "আপনি কোন পোশাকটির দাম জানতে চাচ্ছেন? অনুগ্রহ করে পোশাকটির নাম লিখে জানান, আমি এখনই সঠিক মূল্য ও বিস্তারিত জানিয়ে দিচ্ছি। 😊",
+                        "products": [],
+                        "order": None,
+                        "order_created": False,
+                        "cart_updated": False,
+                        "added_product_id": None,
+                        "order_draft": None,
+                        "order_confirmation_requested": False,
+                        "intent": "clarification_needed",
+                        "engine": "fast-price-engine",
+                    }
 
         return None
 
