@@ -38,7 +38,12 @@ export const AuthProvider = ({ children }) => {
       // Check cached user data first for instant UI response
       const cachedUser = await storage.getItem(STORAGE_KEYS.USER_DATA);
       if (cachedUser) {
-        setUser(cachedUser);
+        try {
+          const parsed = typeof cachedUser === 'string' ? JSON.parse(cachedUser) : cachedUser;
+          setUser(parsed);
+        } catch {
+          setUser(cachedUser);
+        }
       }
 
       // Fetch fresh user profile from backend

@@ -117,9 +117,29 @@ export default function ProfileScreen() {
   };
 
   const handleCallHotline = () => {
-    Linking.openURL(`tel:${cleanPhone}`).catch(() => {
-      Alert.alert('Hotline', `Customer Service: ${phone}`);
-    });
+    const whatsapp = settings?.whatsapp_number || phone;
+    Alert.alert(
+      'Kids & Family Customer Care',
+      `Our team is happy to assist you daily from 10:00 AM - 8:00 PM.\n\nHotline: ${phone}\nWhatsApp: ${whatsapp}`,
+      [
+        { text: 'Close', style: 'cancel' },
+        {
+          text: 'Call Hotline',
+          onPress: () => Linking.openURL(`tel:${cleanPhone}`),
+        },
+        {
+          text: 'Open WhatsApp',
+          onPress: () => Linking.openURL(`https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}`),
+        },
+      ]
+    );
+  };
+
+  const handleAboutUs = () => {
+    Alert.alert(
+      settings?.shop_name || 'Kids & Family Bangladesh',
+      `Welcome to Kids & Family!\n\n${settings?.tagline || 'Bangladesh’s leading premium family lifestyle brand'}.\n\n• 100% Combed Export Cotton\n• Matching Sibling & Family Sets\n• Cash on Delivery & 7-Day Free Exchange\n\nLocation: ${settings?.address || 'Dhaka, Bangladesh'}\nHotline: ${settings?.phone || '+8801700000000'}`
+    );
   };
 
   const handleSaveProfile = async () => {
@@ -183,7 +203,7 @@ export default function ProfileScreen() {
   };
 
   const fullName = user
-    ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Tanbir Hasan'
+    ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || user.email?.split('@')[0] || 'Valued Customer'
     : 'Guest Shopper';
 
   const userEmail = user?.email || (isAuthenticated ? 'user@kidsandfamily.com' : 'Not signed in');
@@ -325,7 +345,7 @@ export default function ProfileScreen() {
               <View style={styles.menuIconCircle}>
                 <Ionicons name="location-outline" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={styles.menuTitle}>My Addresses</Text>
+              <Text style={styles.menuTitle}>Delivery Address</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
           </TouchableOpacity>
@@ -420,25 +440,6 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.menuRow}
             activeOpacity={0.7}
-            onPress={() => Alert.alert('Notifications', 'All up to date!')}
-          >
-            <View style={styles.menuLeft}>
-              <View style={styles.menuIconCircle}>
-                <Ionicons name="notifications-outline" size={18} color={theme.colors.primary} />
-              </View>
-              <Text style={styles.menuTitle}>Notifications</Text>
-            </View>
-            <View style={styles.menuRight}>
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>3</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.menuRow}
-            activeOpacity={0.7}
             onPress={handleCallHotline}
           >
             <View style={styles.menuLeft}>
@@ -453,12 +454,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.menuRow}
             activeOpacity={0.7}
-            onPress={() =>
-              Alert.alert(
-                'About Kids & Family',
-                'Kids & Family is Bangladesh’s leading premium family lifestyle brand, offering matching outfits and children wear made from 100% export cotton.'
-              )
-            }
+            onPress={handleAboutUs}
           >
             <View style={styles.menuLeft}>
               <View style={styles.menuIconCircle}>

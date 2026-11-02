@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../constants/theme';
 import { productApi } from '../api/productApi';
+import { categoryApi } from '../api/categoryApi';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useShopSettings } from '../context/ShopSettingsContext';
@@ -32,19 +33,19 @@ export default function HomeScreen() {
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState([]);
-  const [boysProducts, setBoysProducts] = useState([]);
-  const [girlsProducts, setGirlsProducts] = useState([]);
-  const [familyProducts, setFamilyProducts] = useState([]);
+  const [saleProducts, setSaleProducts] = useState([]);
+  const [dynamicCategorySections, setDynamicCategorySections] = useState([]);
+  const [latestProducts, setLatestProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [featRes, boysRes, girlsRes, famRes] = await Promise.allSettled([
+      const [featRes, saleRes, latestRes, catsRes] = await Promise.allSettled([
         productApi.getFeaturedProducts(6),
-        productApi.getProducts({ cat: 'boy', page_size: 4 }),
-        productApi.getProducts({ cat: 'girl', page_size: 4 }),
-        productApi.getProducts({ cat: 'matching-sets-boy', page_size: 4 }),
+        productApi.getSaleProducts(),
+        productApi.getProducts({ page_size: 6 }),
+        categoryApi.getCategories(true),
       ]);
 
       const normalize = (res) => {
@@ -55,10 +56,31 @@ export default function HomeScreen() {
         return [];
       };
 
-      setFeaturedProducts(normalize(featRes).slice(0, 6));
-      setBoysProducts(normalize(boysRes).slice(0, 4));
-      setGirlsProducts(normalize(girlsRes).slice(0, 4));
-      setFamilyProducts(normalize(famRes).slice(0, 4));
+      const feat = normalize(featRes).slice(0, 6);
+      const sale = normalize(saleRes).slice(0, 4);
+      const latest = normalize(latestRes).slice(0, 6);
+      const cats = normalize(catsRes);
+
+      setFeaturedProducts(feat);
+      setSaleProducts(sale);
+      setLatestProducts(latest);
+
+      // Dynamically load products for up to 3 top categories
+      if (cats.length > 0) {
+        const topCats = cats.slice(0, 3);
+        const catPromises = topCats.map((c) =>
+          productApi.getProducts({ cat: c.slug, page_size: 4 }).catch(() => [])
+        );
+        const catResults = await Promise.allSettled(catPromises);
+        const sections = [];
+        topCats.forEach((c, idx) => {
+          const cProds = normalize(catResults[idx]).slice(0, 4);
+          if (cProds.length > 0) {
+            sections.push({ category: c, products: cProds });
+          }
+        });
+        setDynamicCategorySections(sections);
+      }
     } catch (err) {
       console.warn('HomeScreen data load error:', err);
     } finally {
@@ -178,24 +200,24 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 4. Boys Outfits */}
-        {boysProducts.length > 0 && (
+        {/* 4. Special Offers & Sale */}
+        {saleProducts.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Boys Collection</Text>
-                <Text style={styles.sectionSubtitle}>Smart polo, t-shirts, panjabi & pants</Text>
+                <Text style={styles.sectionTitle}>Special Offers & Sale 🔥</Text>
+                <Text style={styles.sectionSubtitle}>Exclusive discounted prices for limited time</Text>
               </View>
               <TouchableOpacity
                 style={styles.seeAllBtn}
-                onPress={() => router.push({ pathname: '/products', params: { category: 'boy' } })}
+                onPress={() => router.push({ pathname: '/products', params: { on_sale: 'true' } })}
               >
                 <Text style={styles.seeAllText}>See All</Text>
                 <Ionicons name="arrow-forward" size={13} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
             <View style={styles.gridContainer}>
-              {boysProducts.map((item) => (
+              {saleProducts.map((item) => (
                 <View key={item.id} style={styles.gridItem}>
                   <ProductCard product={item} />
                 </View>
@@ -204,50 +226,50 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 5. Girls Outfits */}
-        {girlsProducts.length > 0 && (
-          <View style={styles.section}>
+        {/* 5. Dynamic Category Collections (Driven 100% by backend categories) */}
+        {dynamicCategorySections.map(({ category, products }) => (
+          <View key={category.id} style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Girls Collection</Text>
-                <Text style={styles.sectionSubtitle}>Cotton frocks, party dresses & skirts</Text>
+                <Text style={styles.sectionTitle}>{category.name}</Text>
+                <Text style={styles.sectionSubtitle}>Curated styles in {category.name}</Text>
               </View>
               <TouchableOpacity
                 style={styles.seeAllBtn}
-                onPress={() => router.push({ pathname: '/products', params: { category: 'girl' } })}
+                onPress={() => router.push({ pathname: '/products', params: { category: category.slug } })}
               >
                 <Text style={styles.seeAllText}>See All</Text>
                 <Ionicons name="arrow-forward" size={13} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
             <View style={styles.gridContainer}>
-              {girlsProducts.map((item) => (
+              {products.map((item) => (
                 <View key={item.id} style={styles.gridItem}>
                   <ProductCard product={item} />
                 </View>
               ))}
             </View>
           </View>
-        )}
+        ))}
 
-        {/* 6. Family Matching Combo */}
-        {familyProducts.length > 0 && (
+        {/* 6. Latest Arrivals Fallback */}
+        {dynamicCategorySections.length === 0 && latestProducts.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Family Matching Outfits</Text>
-                <Text style={styles.sectionSubtitle}>Coordinated styles for the whole family</Text>
+                <Text style={styles.sectionTitle}>New Arrivals</Text>
+                <Text style={styles.sectionSubtitle}>Explore the latest kids & family fashion</Text>
               </View>
               <TouchableOpacity
                 style={styles.seeAllBtn}
-                onPress={() => router.push({ pathname: '/products', params: { category: 'matching-sets-boy' } })}
+                onPress={() => router.push('/products')}
               >
                 <Text style={styles.seeAllText}>See All</Text>
                 <Ionicons name="arrow-forward" size={13} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
             <View style={styles.gridContainer}>
-              {familyProducts.map((item) => (
+              {latestProducts.map((item) => (
                 <View key={item.id} style={styles.gridItem}>
                   <ProductCard product={item} />
                 </View>

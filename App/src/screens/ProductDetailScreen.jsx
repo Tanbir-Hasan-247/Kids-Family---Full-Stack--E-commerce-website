@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Share,
   ScrollView,
   Dimensions,
   TouchableOpacity,
@@ -276,6 +277,18 @@ export default function ProductDetailScreen() {
   };
 
   // Review submission
+  const handleShareProduct = async () => {
+    try {
+      const priceText = formatPrice(product?.starting_price || product?.base_price || 0);
+      await Share.share({
+        title: product?.name || 'Kids & Family Outfit',
+        message: `${product?.name || 'Kids & Family Outfit'} • ${priceText}\nCheck this out at Kids & Family: https://kids-family-backend-one.vercel.app/products/${product?.id}`,
+      });
+    } catch (e) {
+      console.warn('Share notice:', e?.message);
+    }
+  };
+
   const handleOpenReviewModal = () => {
     const defaultName = user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : (user?.email?.split('@')[0] || '');
     setNewReviewerName(defaultName);
@@ -371,7 +384,7 @@ export default function ProductDetailScreen() {
               />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => Alert.alert('Share', 'Share link copied!')}
+              onPress={handleShareProduct}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="share-social-outline" size={22} color={theme.colors.text} />

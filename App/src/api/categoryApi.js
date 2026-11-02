@@ -2,7 +2,7 @@
 import api from './axiosInstance';
 
 export const categoryApi = {
-  // Get categories (hierarchical roots with nested children, or ?all=true for flat list)
+  // Get categories (hierarchical roots with nested children, or ?all=true for flat list) (GET /api/categories/)
   async getCategories(all = false) {
     const url = all ? '/categories/?all=true' : '/categories/';
     const res = await api.get(url);
@@ -17,27 +17,33 @@ export const categoryApi = {
     return this.getCategories(true);
   },
 
-  // Get single category by slug or id
+  // Get single category by slug or id (GET /api/categories/{slug_or_id}/)
   async getCategoryDetail(slugOrId) {
     const res = await api.get(`/categories/${slugOrId}/`);
     return res.data;
   },
 
-  // Create new category (Admin/Staff only)
+  // Create new category (Admin/Staff only) (POST /api/categories/)
   async createCategory(categoryData) {
     const res = await api.post('/categories/', categoryData);
     return res.data;
   },
 
-  // Update existing category (Admin/Staff only)
-  async updateCategory(slug, data) {
-    const res = await api.patch(`/categories/${slug}/`, data);
+  // Partial update existing category (Admin/Staff only) (PATCH /api/categories/{slug_or_id}/)
+  async updateCategory(slugOrId, data) {
+    const res = await api.patch(`/categories/${slugOrId}/`, data);
     return res.data;
   },
 
-  // Delete category (Admin/Staff only)
-  async deleteCategory(slug) {
-    const res = await api.delete(`/categories/${slug}/`);
+  // Full update existing category (Admin/Staff only) (PUT /api/categories/{slug_or_id}/)
+  async putCategory(slugOrId, data) {
+    const res = await api.put(`/categories/${slugOrId}/`, data);
+    return res.data;
+  },
+
+  // Delete category (Admin/Staff only) (DELETE /api/categories/{slug_or_id}/)
+  async deleteCategory(slugOrId) {
+    const res = await api.delete(`/categories/${slugOrId}/`);
     return res.data;
   },
 };

@@ -16,15 +16,19 @@ import { theme } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH = SCREEN_WIDTH - theme.spacing.lg * 2;
-const BANNER_HEIGHT = Math.round(BANNER_WIDTH * 0.52);
+// Default aspect ratio for Kids & Family banners (2400x880 ~= 2.727)
+const DEFAULT_ASPECT_RATIO = 2400 / 880;
 
 export default function HeroBannerSlider() {
   const router = useRouter();
   const [banners, setBanners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [aspectRatio, setAspectRatio] = useState(DEFAULT_ASPECT_RATIO);
   const flatListRef = useRef(null);
   const timerRef = useRef(null);
+
+  const bannerHeight = Math.round(BANNER_WIDTH / aspectRatio);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,7 +101,7 @@ export default function HeroBannerSlider() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.placeholder]}>
+      <View style={[styles.container, styles.placeholder, { height: bannerHeight }]}>
         <ActivityIndicator size="small" color={theme.colors.primary} />
       </View>
     );
@@ -108,7 +112,7 @@ export default function HeroBannerSlider() {
       <View style={styles.container}>
         <TouchableOpacity
           activeOpacity={0.9}
-          style={styles.defaultCard}
+          style={[styles.defaultCard, { height: bannerHeight }]}
           onPress={() => router.push('/products')}
         >
           <View style={styles.defaultContent}>
@@ -145,7 +149,7 @@ export default function HeroBannerSlider() {
           return (
             <TouchableOpacity
               activeOpacity={0.92}
-              style={styles.slide}
+              style={[styles.slide, { height: bannerHeight }]}
               onPress={() => handleBannerPress(item)}
             >
               {imgUrl ? (
@@ -153,37 +157,40 @@ export default function HeroBannerSlider() {
                   source={{ uri: imgUrl }}
                   style={styles.bannerImage}
                   contentFit="cover"
-                  transition={250}
+                  transition={200}
+                  onLoad={(e) => {
+                    if (e?.source?.width && e?.source?.height) {
+                      const ratio = e.source.width / e.source.height;
+                      if (ratio > 0.5 && Math.abs(ratio - aspectRatio) > 0.05) {
+                        setAspectRatio(ratio);
+                      }
+                    }
+                  }}
                 />
-              ) : null}
-
-              {/* Overlay with Content */}
-              {/* <View style={styles.overlay}> */}
-              <View>
-                {item.badge_text ? (
-                  <View style={styles.badgePill}>
-                    <Text style={styles.badgePillText}>{item.badge_text}</Text>
-                  </View>
-                ) : null}
-                {/* <Text style={styles.slideTitle} numberOfLines={2}>
-                  {item.title}
-                </Text> */}
-                {item.subtitle ? (
-                  <Text style={styles.slideSubtitle} numberOfLines={2}>
-                    {item.subtitle}
-                  </Text>
-                ) : null}
-
-                
-                {item.cta_text ? (
-                  <View style={styles.ctaButton}>
-                    <Text style={styles.ctaButtonText}>
-                      {item.cta_text}
+              ) : (
+                <View style={styles.textBannerContent}>
+                  {item.badge_text ? (
+                    <View style={styles.badgePill}>
+                      <Text style={styles.badgePillText}>{item.badge_text}</Text>
+                    </View>
+                  ) : null}
+                  {item.title ? (
+                    <Text style={styles.slideTitle} numberOfLines={2}>
+                      {item.title}
                     </Text>
-                  </View>
-                ) : null}
-                
-              </View>
+                  ) : null}
+                  {item.subtitle ? (
+                    <Text style={styles.slideSubtitle} numberOfLines={2}>
+                      {item.subtitle}
+                    </Text>
+                  ) : null}
+                  {item.cta_text ? (
+                    <View style={styles.ctaButton}>
+                      <Text style={styles.ctaButtonText}>{item.cta_text}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
             </TouchableOpacity>
           );
         }}
@@ -216,26 +223,29 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   placeholder: {
-    height: BANNER_HEIGHT,
     backgroundColor: theme.colors.surfaceMuted,
-    borderRadius: 22,
+    borderRadius: 16,
     marginHorizontal: theme.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   slide: {
     width: BANNER_WIDTH,
-    height: BANNER_HEIGHT,
-    borderRadius: 22,
+    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#4c1d95',
+    backgroundColor: '#f1f5f9',
     position: 'relative',
-    ...theme.shadows.md,
+    ...theme.shadows.sm,
   },
   bannerImage: {
     width: '100%',
     height: '100%',
-    position: 'absolute',
+  },
+  textBannerContent: {
+    padding: 16,
+    justifyContent: 'center',
+    height: '100%',
+    backgroundColor: '#4c1d95',
   },
   overlay: {
     position: 'absolute',
@@ -293,8 +303,7 @@ const styles = StyleSheet.create({
   },
   defaultCard: {
     marginHorizontal: theme.spacing.lg,
-    height: BANNER_HEIGHT,
-    borderRadius: 22,
+    borderRadius: 16,
     backgroundColor: '#4c1d95',
     padding: theme.spacing.lg,
     justifyContent: 'center',

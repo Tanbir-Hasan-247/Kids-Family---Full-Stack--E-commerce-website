@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Share,
   ScrollView,
   TouchableOpacity,
   Alert,
@@ -20,12 +21,19 @@ export default function OrderSuccessScreen() {
   const { orderNumber, total, phone } = useLocalSearchParams();
   const [copied, setCopied] = useState(false);
 
-  const displayOrderNumber = orderNumber ? `#${orderNumber}` : '#KF2610183381';
+  const displayOrderNumber = orderNumber ? `#${orderNumber}` : '';
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    Alert.alert('Copied', `Tracking ID ${displayOrderNumber} copied to clipboard!`);
+    setTimeout(() => setCopied(false), 3000);
+    try {
+      await Share.share({
+        title: 'Order Tracking ID',
+        message: `My Kids & Family Order Tracking Number is ${displayOrderNumber}.`,
+      });
+    } catch (e) {
+      console.warn('Share note:', e?.message);
+    }
   };
 
   return (

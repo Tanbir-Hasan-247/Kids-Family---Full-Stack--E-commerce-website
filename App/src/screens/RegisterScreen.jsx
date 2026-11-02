@@ -45,6 +45,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!email.trim()) {
+      Alert.alert('Required Field', 'Please enter your email address.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert('Password Mismatch', 'The passwords entered do not match.');
       return;
@@ -63,13 +68,11 @@ export default function RegisterScreen() {
     const payload = {
       first_name: firstName,
       last_name: lastName,
+      email: email.trim().toLowerCase(),
       phone: phone.trim(),
       password,
-      password2: confirmPassword,
+      password_confirm: confirmPassword,
     };
-    if (email.trim()) {
-      payload.email = email.trim();
-    }
 
     const result = await register(payload);
     setLoading(false);
@@ -78,7 +81,7 @@ export default function RegisterScreen() {
       Alert.alert('Registration Successful', 'Welcome to Kids & Family! Enjoy shopping.', [
         {
           text: 'Get Started',
-          onPress: () => router.replace('/(tabs)/home'),
+          onPress: () => router.replace('/(tabs)'),
         },
       ]);
     } else {
@@ -105,7 +108,7 @@ export default function RegisterScreen() {
           const loginRes = await loginWithGoogle({ access, refresh });
           if (loginRes.success) {
             Alert.alert('Success', 'Google Account connected successfully!');
-            router.replace('/(tabs)/home');
+            router.replace('/(tabs)');
             return;
           } else {
             Alert.alert('Notice', loginRes.message || 'Could not verify Google tokens.');

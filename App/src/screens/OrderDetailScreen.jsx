@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
+import { useShopSettings } from '../context/ShopSettingsContext';
 import { Ionicons } from '@expo/vector-icons';
 import { orderApi } from '../api/orderApi';
 import { formatImageUrl } from '../utils/imageHelper';
@@ -24,6 +25,7 @@ import AppBottomNav from '../components/layout/AppBottomNav';
 
 export default function OrderDetailScreen() {
   const { orderNumber } = useLocalSearchParams();
+  const { settings } = useShopSettings();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -58,8 +60,9 @@ export default function OrderDetailScreen() {
   }, [orderNumber]);
 
   const handleCallSupport = () => {
-    Linking.openURL('tel:01700000000').catch(() => {
-      Alert.alert('Customer Care', 'Please call our hotline: 01700000000');
+    const phone = settings?.phone || '+8801700000000';
+    Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, '')}`).catch(() => {
+      Alert.alert('Customer Care', `Please call our customer hotline: ${phone}`);
     });
   };
 
@@ -86,9 +89,9 @@ export default function OrderDetailScreen() {
   }
 
   const items = Array.isArray(order.items) ? order.items : [];
-  const subtotal = parseFloat(order.subtotal || order.total_amount || 0);
   const shippingFee = parseFloat(order.shipping_fee || 0);
-  const total = parseFloat(order.total_amount || 0);
+  const total = parseFloat(order.total || order.total_amount || 0);
+  const subtotal = parseFloat(order.subtotal || (total ? Math.max(0, total - shippingFee) : 0));
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>

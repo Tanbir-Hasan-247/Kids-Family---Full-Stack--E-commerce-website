@@ -51,7 +51,7 @@ export default function LoginScreen() {
       if (router.canGoBack()) {
         router.back();
       } else {
-        router.replace('/(tabs)/home');
+        router.replace('/(tabs)');
       }
     } else {
       Alert.alert('Login Failed', result.message || 'Invalid credentials. Please try again.');
@@ -81,7 +81,7 @@ export default function LoginScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace('/(tabs)/home');
+              router.replace('/(tabs)');
             }
             return;
           } else {
